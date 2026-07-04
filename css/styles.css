@@ -1,0 +1,345 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 240px;
+    height: 282px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-size: 12px;
+    background: #0f1410;
+    color: #eef3ec;
+    overflow: hidden;
+    position: relative;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+#app {
+    width: 100%;
+    height: 100%;
+    border: 4px solid #4caf50;
+    display: flex;
+    flex-direction: column;
+}
+
+header {
+    background: #172014;
+    padding: 6px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 30px;
+    border-bottom: 1px solid #2e3d2b;
+    flex-shrink: 0;
+}
+
+header h1 {
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #555;
+}
+
+.status-dot.live { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+.status-dot.sim { background: #ffaa00; box-shadow: 0 0 6px #ffaa00; }
+
+main {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.view {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    padding: 8px;
+    gap: 6px;
+    overflow-y: auto;
+}
+
+.view.active { display: flex; }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+
+/* Menu */
+.menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    justify-content: center;
+}
+
+.menu-item {
+    width: 100%;
+    padding: 12px 10px;
+    background: #1a2318;
+    color: #eef3ec;
+    border: 1px solid #2e3d2b;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    text-align: left;
+}
+
+.menu-item.selected {
+    border-color: #4caf50;
+    background: #1f2e1c;
+    color: #7ee08a;
+}
+
+/* Camera / scan */
+.cam-frame {
+    flex: 1;
+    background: #111;
+    border: 1px solid #2e3d2b;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#camPreview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+#camPreview.active { display: block; }
+
+.cam-fallback {
+    color: #8a9686;
+    font-size: 11px;
+    text-align: center;
+    padding: 10px;
+}
+
+.viewfinder-line {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    top: 50%;
+    height: 2px;
+    background: rgba(76, 175, 80, 0.7);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.scan-status {
+    text-align: center;
+    font-size: 11px;
+    color: #7ee08a;
+    flex-shrink: 0;
+}
+
+.status-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    color: #7ee08a;
+    padding: 10px;
+}
+
+/* Item card */
+.item-heading {
+    font-size: 12px;
+    font-weight: bold;
+    color: #8a9686;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.item-photo {
+    height: 44px;
+    background: #1a2318;
+    border: 1px solid #2e3d2b;
+    border-radius: 4px;
+    background-size: cover;
+    background-position: center;
+    flex-shrink: 0;
+}
+
+.item-name {
+    font-size: 15px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.item-brand {
+    font-size: 11px;
+    color: #8a9686;
+    flex-shrink: 0;
+    margin-top: -4px;
+}
+
+.qty-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #1a2318;
+    border: 1px solid #2e3d2b;
+    border-radius: 4px;
+    padding: 8px 10px;
+    flex-shrink: 0;
+}
+
+.qty-label {
+    color: #8a9686;
+    font-size: 11px;
+}
+
+.qty-stepper {
+    flex: 1;
+    text-align: center;
+}
+
+.qty-value {
+    font-size: 20px;
+    font-weight: bold;
+    color: #7ee08a;
+}
+
+.qty-location {
+    font-size: 10px;
+    color: #8a9686;
+    background: #111;
+    border-radius: 3px;
+    padding: 3px 6px;
+}
+
+button {
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 9px;
+}
+
+.btn-primary {
+    background: #4caf50;
+    color: #0f1410;
+    flex-shrink: 0;
+}
+
+.btn-secondary {
+    background: #2a1a1a;
+    color: #e08a8a;
+    border: 1px solid #4a2a2a;
+    flex-shrink: 0;
+}
+
+.text-input {
+    width: 100%;
+    background: #1a2318;
+    color: #eef3ec;
+    border: 1px solid #2e3d2b;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.hint {
+    font-size: 9px;
+    color: #6b7a67;
+    text-align: center;
+    line-height: 1.3;
+    flex-shrink: 0;
+}
+
+/* Inventory list */
+.inventory-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.inventory-item {
+    padding: 7px 8px;
+    background: #1a2318;
+    border: 1px solid #2e3d2b;
+    border-left: 3px solid transparent;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.inventory-item.selected {
+    border-left-color: #4caf50;
+    background: #1f2e1c;
+}
+
+.inventory-item .ii-name {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.inventory-item .ii-meta {
+    color: #8a9686;
+    font-size: 9px;
+    margin-top: 2px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.empty-hint {
+    display: none;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #6b7a67;
+    font-size: 11px;
+}
+
+/* Detail view */
+.detail-rows {
+    flex: 1;
+    background: #1a2318;
+    border: 1px solid #2e3d2b;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+}
+
+.detail-row .dr-label { color: #8a9686; }
+.detail-row .dr-value { font-weight: bold; }

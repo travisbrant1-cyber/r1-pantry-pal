@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=240, initial-scale=1.0, user-scalable=no">
+    <title>Pantry Pal</title>
+    <link rel="icon" href="icon.png">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Pantry Pal</h1>
+            <div class="status-dot" id="statusDot" title="Camera status"></div>
+        </header>
+
+        <main>
+            <!-- Home -->
+            <div class="view active" id="homeView">
+                <div class="menu-list">
+                    <button class="menu-item selected" data-action="scan">Scan item</button>
+                    <button class="menu-item" data-action="browse">Browse inventory</button>
+                </div>
+                <div class="hint">Scroll: choose &middot; Click PTT: select</div>
+            </div>
+
+            <!-- Scan (camera + barcode viewfinder) -->
+            <div class="view" id="scanView">
+                <div class="cam-frame">
+                    <video id="camPreview" autoplay playsinline muted></video>
+                    <div class="cam-fallback" id="camFallback">Tap to scan a photo instead</div>
+                    <div class="viewfinder-line"></div>
+                </div>
+                <input type="file" id="fileInput" accept="image/*" capture="environment" class="visually-hidden">
+                <div class="scan-status" id="scanStatus">Point at a barcode&hellip;</div>
+                <div class="hint">Hold PTT: back &middot; Tap: enter manually</div>
+            </div>
+
+            <!-- Transient lookup status -->
+            <div class="view" id="lookupView">
+                <div class="status-center" id="lookupStatus">Looking up&hellip;</div>
+            </div>
+
+            <!-- Item card: new item confirm OR existing item quantity adjust -->
+            <div class="view" id="itemCardView">
+                <div class="item-heading" id="itemHeading">New item</div>
+                <div class="item-photo" id="itemPhoto"></div>
+                <div class="item-name" id="itemName">&mdash;</div>
+                <div class="item-brand" id="itemBrand"></div>
+                <div class="qty-row">
+                    <span class="qty-label">Qty</span>
+                    <div class="qty-stepper">
+                        <span class="qty-value" id="qtyValue">1</span>
+                    </div>
+                    <span class="qty-location" id="itemLocation">Pantry</span>
+                </div>
+                <button class="btn-primary" id="itemSaveBtn">Save</button>
+                <div class="hint" id="itemHint">Scroll: quantity &middot; Click PTT: save &middot; Hold: cancel</div>
+            </div>
+
+            <!-- Recovery menu for unknown products -->
+            <div class="view" id="recoveryView">
+                <div class="item-heading">Unknown product</div>
+                <div class="item-photo" id="recoveryPhoto"></div>
+                <div class="menu-list" id="recoveryMenu">
+                    <button class="menu-item selected" data-recovery="vision">Try vision AI</button>
+                    <button class="menu-item" data-recovery="voice">Voice entry</button>
+                    <button class="menu-item" data-recovery="manual">Manual entry</button>
+                </div>
+                <div class="hint">Scroll: choose &middot; Click PTT: select &middot; Hold: back</div>
+            </div>
+
+            <!-- Transient analyzing/listening status -->
+            <div class="view" id="statusView">
+                <div class="status-center" id="statusText">Working&hellip;</div>
+                <div class="hint" id="statusHint"></div>
+            </div>
+
+            <!-- Manual entry form -->
+            <div class="view" id="manualView">
+                <div class="item-heading" id="manualHeading">Manual entry</div>
+                <input type="text" id="manualName" class="text-input" placeholder="Product name">
+                <div class="qty-row">
+                    <span class="qty-label">Qty</span>
+                    <div class="qty-stepper">
+                        <span class="qty-value" id="manualQtyValue">1</span>
+                    </div>
+                    <span class="qty-location">Pantry</span>
+                </div>
+                <button class="btn-primary" id="manualSaveBtn">Save</button>
+                <div class="hint">Scroll: quantity &middot; Click PTT: save &middot; Hold: cancel</div>
+            </div>
+
+            <!-- Inventory browser -->
+            <div class="view" id="browseView">
+                <div class="inventory-list" id="inventoryList"></div>
+                <div class="empty-hint" id="browseEmptyHint">No items yet. Scan something!</div>
+                <div class="hint">Scroll: move &middot; Click PTT: open &middot; Hold: back</div>
+            </div>
+
+            <!-- Item detail -->
+            <div class="view" id="detailView">
+                <div class="item-heading" id="detailName">&mdash;</div>
+                <div class="detail-rows" id="detailRows"></div>
+                <button class="btn-secondary" id="detailDeleteBtn">Remove item</button>
+                <div class="hint">Scroll: quantity &middot; Hold: back</div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/vendor/zxing.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
