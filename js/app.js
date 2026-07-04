@@ -162,6 +162,11 @@
         camFallback.style.display = 'none';
         videoActive = true;
         statusDot.classList.add('live');
+        // The stream can finish setting up after the user has already
+        // navigated into the scan view (permission prompts take real time on
+        // a real device) - start the decode loop now if we're sitting there
+        // waiting, instead of only starting it at the moment of navigation.
+        if (currentView === 'scan') startVideoScanning();
       })
       .catch(function () {
         showCamFallback();
@@ -188,13 +193,14 @@
 
   function enterScan() {
     showView('scan');
-    scanStatus.textContent = 'Point at a barcode…';
+    scanStatus.textContent = videoActive ? 'Point at a barcode…' : 'Starting camera…';
     if (videoActive) startVideoScanning();
   }
 
   function startVideoScanning() {
     if (scanningActive) return;
     scanningActive = true;
+    scanStatus.textContent = 'Point at a barcode…';
     if (!codeReader) codeReader = new window.ZXing.BrowserMultiFormatReader(getZXingHints());
     codeReader.decodeFromVideoElement(camPreview, function (result, err) {
       if (result) handleBarcodeDetected(result.getText());
