@@ -20,6 +20,7 @@
                 <div class="menu-list">
                     <button class="menu-item selected" data-action="scan">Scan item</button>
                     <button class="menu-item" data-action="browse">Browse inventory</button>
+                    <button class="menu-item" data-action="manual">Add manually</button>
                 </div>
                 <div class="hint">Scroll: choose &middot; Click PTT: select</div>
             </div>
@@ -33,7 +34,7 @@
                 </div>
                 <input type="file" id="fileInput" accept="image/*" capture="environment" class="visually-hidden">
                 <div class="scan-status" id="scanStatus">Point at a barcode&hellip;</div>
-                <div class="hint">Hold PTT: back &middot; Tap: enter manually</div>
+                <div class="hint">Click PTT or tap: capture &middot; Hold: back</div>
             </div>
 
             <!-- Transient lookup status -->
@@ -88,7 +89,7 @@
                     <span class="qty-location">Pantry</span>
                 </div>
                 <button class="btn-primary" id="manualSaveBtn">Save</button>
-                <div class="hint">Scroll: quantity &middot; Click PTT: save &middot; Hold: cancel</div>
+                <div class="hint">Scroll: qty &middot; Tap qty: fractions &middot; Click: save &middot; Hold: cancel</div>
             </div>
 
             <!-- Inventory browser -->
@@ -103,7 +104,7 @@
                 <div class="item-heading" id="detailName">&mdash;</div>
                 <div class="detail-rows" id="detailRows"></div>
                 <button class="btn-secondary" id="detailDeleteBtn">Remove item</button>
-                <div class="hint">Scroll: quantity &middot; Hold: back</div>
+                <div class="hint">Scroll: qty &middot; Tap qty row: fractions &middot; Hold: back</div>
             </div>
         </main>
     </div>

@@ -57,13 +57,12 @@
   // ---- State ----
   var currentView = 'home';
   var homeIndex = 0;
-  var HOME_ACTIONS = ['scan', 'browse'];
+  var HOME_ACTIONS = ['scan', 'browse', 'manual'];
 
   var inventory = [];
   var videoActive = false;
+  var cameraUnavailable = false;
   var codeReader = null;
-  var scanningActive = false;
-  var lastDecodeAt = 0;
 
   var pendingItem = null;   // item being built/edited
   var itemCardMode = 'new'; // 'new' | 'existing'
@@ -81,6 +80,18 @@
   var speechRecognizer = null;
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // ---- Quantity helpers: whole-number stepping stays fast (1 click = 1 unit)
+  // for the common countable case (cans, boxes); a per-field fraction mode,
+  // toggled by tapping the quantity, steps in quarters for bulk/unitless
+  // goods (flour, rice) where "how much is left" is the natural unit. ----
+  var FRACTION_LABELS = { 0: '0', 0.25: '1/4', 0.5: '1/2', 0.75: '3/4', 1: '1' };
+  function formatQty(q, isFraction) {
+    if (isFraction && FRACTION_LABELS[q] !== undefined) return FRACTION_LABELS[q];
+    return String(q);
+  }
+  function stepWhole(current, dir) { return clamp(current + dir, 0, 999); }
+  function stepFraction(current, dir) { return clamp(Math.round((current + dir * 0.25) * 4) / 4, 0, 1); }
 
   // ---- Storage ----
   function storageGet(key) {
@@ -147,9 +158,23 @@
     var action = HOME_ACTIONS[homeIndex];
     if (action === 'scan') enterScan();
     else if (action === 'browse') enterBrowse();
+    else if (action === 'manual') enterManualFromHome();
+  }
+
+  function enterManualFromHome() {
+    pendingItem = { id: 'manual-' + Date.now(), barcode: null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: null, source: 'manual' };
+    manualHeading.textContent = 'Manual entry';
+    enterManual(false);
   }
 
   // ---- Camera / scanning ----
+  // Scanning is deliberate and one-shot: aim the camera, then click PTT (or
+  // tap the frame) to capture a single still and decode that - rather than
+  // continuously decoding live video. A continuous background decode loop
+  // depends on the WebView's frame-grab timing working a particular way,
+  // which is exactly the kind of thing that already broke once; a capture-
+  // then-decode model is simpler, more predictable, and mirrors the already-
+  // proven Color Picker capture flow.
   function initCamera() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       showCamFallback();
@@ -161,12 +186,9 @@
         camPreview.classList.add('active');
         camFallback.style.display = 'none';
         videoActive = true;
+        cameraUnavailable = false;
         statusDot.classList.add('live');
-        // The stream can finish setting up after the user has already
-        // navigated into the scan view (permission prompts take real time on
-        // a real device) - start the decode loop now if we're sitting there
-        // waiting, instead of only starting it at the moment of navigation.
-        if (currentView === 'scan') startVideoScanning();
+        if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
       })
       .catch(function () {
         showCamFallback();
@@ -175,8 +197,10 @@
 
   function showCamFallback() {
     videoActive = false;
+    cameraUnavailable = true;
     camFallback.style.display = 'block';
     statusDot.classList.add('sim');
+    if (currentView === 'scan') scanStatus.textContent = 'Tap the frame to choose a photo';
   }
 
   function getZXingHints() {
@@ -193,49 +217,46 @@
 
   function enterScan() {
     showView('scan');
-    scanStatus.textContent = videoActive ? 'Point at a barcode…' : 'Starting camera…';
-    if (videoActive) startVideoScanning();
+    if (videoActive) scanStatus.textContent = 'Point at a barcode, click PTT';
+    else if (cameraUnavailable) scanStatus.textContent = 'Tap the frame to choose a photo';
+    else scanStatus.textContent = 'Starting camera…';
   }
 
-  function startVideoScanning() {
-    if (scanningActive) return;
-    scanningActive = true;
-    scanStatus.textContent = 'Point at a barcode…';
-    if (!codeReader) codeReader = new window.ZXing.BrowserMultiFormatReader(getZXingHints());
-    codeReader.decodeFromVideoElement(camPreview, function (result, err) {
-      if (result) handleBarcodeDetected(result.getText());
+  function attemptCapture() {
+    if (cameraUnavailable) { fileInput.click(); return; }
+    if (!videoActive) { scanStatus.textContent = 'Camera still starting…'; return; }
+
+    var c = document.createElement('canvas');
+    c.width = 160; c.height = 120;
+    var ctx = c.getContext('2d');
+    ctx.drawImage(camPreview, 0, 0, c.width, c.height);
+    capturedPhotoDataUrl = c.toDataURL('image/jpeg', 0.6);
+
+    scanStatus.textContent = 'Reading…';
+    decodeFromCanvas(c)
+      .then(function (barcode) { onBarcodeReady(barcode); })
+      .catch(function () {
+        scanStatus.textContent = 'No barcode found — try again';
+        setTimeout(function () {
+          if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
+        }, 1400);
+      });
+  }
+
+  function decodeFromCanvas(canvas) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () {
+        if (!codeReader) codeReader = new window.ZXing.BrowserMultiFormatReader(getZXingHints());
+        codeReader.decodeFromImageElement(img)
+          .then(function (result) { resolve(result.getText()); })
+          .catch(function (err) { reject(err); });
+      };
+      img.src = canvas.toDataURL('image/png');
     });
   }
 
-  function stopVideoScanning() {
-    scanningActive = false;
-    if (codeReader) {
-      try { codeReader.reset(); } catch (e) {}
-    }
-  }
-
-  function handleBarcodeDetected(barcode) {
-    var now = Date.now();
-    if (now - lastDecodeAt < 2000) return; // debounce repeat decodes of the same session
-    lastDecodeAt = now;
-    stopVideoScanning();
-    capturePhotoFrame();
-    onBarcodeReady(barcode);
-  }
-
-  function capturePhotoFrame() {
-    try {
-      var c = document.createElement('canvas');
-      c.width = 160; c.height = 120;
-      var ctx = c.getContext('2d');
-      ctx.drawImage(camPreview, 0, 0, c.width, c.height);
-      capturedPhotoDataUrl = c.toDataURL('image/jpeg', 0.6);
-    } catch (e) {
-      capturedPhotoDataUrl = null;
-    }
-  }
-
-  camFallback.addEventListener('click', function () { fileInput.click(); });
+  document.querySelector('#scanView .cam-frame').addEventListener('click', attemptCapture);
   fileInput.addEventListener('change', function (e) {
     var file = e.target.files[0];
     if (!file) return;
@@ -247,9 +268,8 @@
       ctx.drawImage(img, 0, 0, c.width, c.height);
       capturedPhotoDataUrl = c.toDataURL('image/jpeg', 0.6);
 
-      if (!codeReader) codeReader = new window.ZXing.BrowserMultiFormatReader(getZXingHints());
-      codeReader.decodeFromImageElement(img)
-        .then(function (result) { onBarcodeReady(result.getText()); })
+      decodeFromCanvas(c)
+        .then(function (barcode) { onBarcodeReady(barcode); })
         .catch(function () { onBarcodeReady(null); });
 
       URL.revokeObjectURL(img.src);
@@ -432,22 +452,38 @@
   }
 
   // ---- Manual entry ----
+  var manualQtyNum = 1;
+  var manualQtyFraction = false;
+
   function enterManual(prefilled) {
     if (!prefilled) {
       manualName.value = '';
       manualHeading.textContent = 'Manual entry';
     }
-    manualQtyValue.textContent = String(pendingItem.quantity || 1);
+    manualQtyNum = pendingItem.quantity || 1;
+    manualQtyFraction = manualQtyNum > 0 && manualQtyNum < 1;
+    renderManualQty();
     showView('manual');
     setTimeout(function () { manualName.focus(); }, 50);
   }
+
+  function renderManualQty() {
+    manualQtyValue.textContent = formatQty(manualQtyNum, manualQtyFraction);
+  }
+
+  function toggleManualQtyFraction() {
+    manualQtyFraction = !manualQtyFraction;
+    manualQtyNum = 1;
+    renderManualQty();
+  }
+  manualQtyValue.addEventListener('click', toggleManualQtyFraction);
 
   manualSaveBtn.addEventListener('click', saveManual);
   function saveManual() {
     var name = manualName.value.trim();
     if (!name) { manualName.focus(); return; }
     pendingItem.productName = name;
-    pendingItem.quantity = clamp(parseInt(manualQtyValue.textContent, 10) || 1, 0, 999);
+    pendingItem.quantity = manualQtyNum;
     upsertItem(pendingItem).then(function () {
       flashSaved();
       showView('home');
@@ -455,42 +491,56 @@
   }
 
   function adjustManualQty(delta) {
-    var v = clamp((parseInt(manualQtyValue.textContent, 10) || 0) + delta, 0, 999);
-    manualQtyValue.textContent = String(v);
+    manualQtyNum = manualQtyFraction ? stepFraction(manualQtyNum, delta) : stepWhole(manualQtyNum, delta);
+    renderManualQty();
   }
 
   // ---- Item card (new confirm / existing quantity adjust) ----
+  var itemQtyNum = 1;
+  var itemQtyFraction = false;
+
   function openItemCard() {
     itemHeading.textContent = itemCardMode === 'existing' ? 'Already in inventory' : 'New item — confirm';
     itemName.textContent = pendingItem.productName || '(unnamed)';
     itemBrand.textContent = pendingItem.brand || '';
     itemLocation.textContent = pendingItem.location || 'Pantry';
     itemPhoto.style.backgroundImage = pendingItem.image ? 'url(' + pendingItem.image + ')' : 'none';
-    qtyValue.textContent = String(pendingItem.quantity || (itemCardMode === 'existing' ? itemCardOriginalQty : 1));
-    updateItemHint();
+    itemQtyNum = pendingItem.quantity != null ? pendingItem.quantity : (itemCardMode === 'existing' ? itemCardOriginalQty : 1);
+    itemQtyFraction = itemQtyNum > 0 && itemQtyNum < 1;
+    renderItemQty();
     showView('itemCard');
+  }
+
+  function renderItemQty() {
+    qtyValue.textContent = formatQty(itemQtyNum, itemQtyFraction);
+    updateItemHint();
   }
 
   function updateItemHint() {
     if (itemCardMode === 'existing') {
-      var q = parseInt(qtyValue.textContent, 10);
-      itemHint.textContent = q === 0
-        ? 'Scroll: quantity · Click PTT: keep at 0 · Hold: remove entirely'
-        : 'Scroll: quantity · Click PTT: save · Hold: remove entirely';
+      itemHint.textContent = itemQtyNum === 0
+        ? 'Scroll: qty · Tap qty: fractions · Click: keep at 0 · Hold: remove'
+        : 'Scroll: qty · Tap qty: fractions · Click: save · Hold: remove';
     } else {
-      itemHint.textContent = 'Scroll: quantity · Click PTT: save · Hold: cancel';
+      itemHint.textContent = 'Scroll: qty · Tap qty: fractions · Click: save · Hold: cancel';
     }
   }
 
   function adjustItemQty(delta) {
-    var v = clamp((parseInt(qtyValue.textContent, 10) || 0) + delta, 0, 999);
-    qtyValue.textContent = String(v);
-    updateItemHint();
+    itemQtyNum = itemQtyFraction ? stepFraction(itemQtyNum, delta) : stepWhole(itemQtyNum, delta);
+    renderItemQty();
   }
+
+  function toggleItemQtyFraction() {
+    itemQtyFraction = !itemQtyFraction;
+    itemQtyNum = 1;
+    renderItemQty();
+  }
+  qtyValue.addEventListener('click', toggleItemQtyFraction);
 
   itemSaveBtn.addEventListener('click', saveItemCard);
   function saveItemCard() {
-    pendingItem.quantity = parseInt(qtyValue.textContent, 10) || 0;
+    pendingItem.quantity = itemQtyNum;
     upsertItem(pendingItem).then(function () {
       flashSaved();
       showView('home');
@@ -542,10 +592,13 @@
   }
 
   // ---- Detail ----
+  var detailQtyFraction = false;
+
   function openDetail() {
     if (inventory.length === 0) return;
     var item = inventory[browseIndex];
     detailQty = item.quantity;
+    detailQtyFraction = detailQty > 0 && detailQty < 1;
     renderDetail(item);
     showView('detail');
   }
@@ -553,7 +606,7 @@
   function renderDetail(item) {
     detailName.textContent = item.productName || '(unnamed)';
     detailRows.innerHTML =
-      row('Quantity', detailQty) +
+      '<div class="detail-row" id="detailQtyRow"><span class="dr-label">Quantity</span><span class="dr-value">' + formatQty(detailQty, detailQtyFraction) + '</span></div>' +
       row('Location', item.location || 'Pantry') +
       row('Brand', item.brand || '—') +
       row('Barcode', item.barcode || '—') +
@@ -567,13 +620,27 @@
 
   function adjustDetailQty(delta) {
     if (inventory.length === 0) return;
-    detailQty = clamp(detailQty + delta, 0, 999);
+    detailQty = detailQtyFraction ? stepFraction(detailQty, delta) : stepWhole(detailQty, delta);
     var item = inventory[browseIndex];
     item.quantity = detailQty;
     item.lastUpdated = new Date().toISOString().slice(0, 10);
     saveInventoryToDisk();
     renderDetail(item);
   }
+
+  function toggleDetailQtyFraction() {
+    if (inventory.length === 0) return;
+    detailQtyFraction = !detailQtyFraction;
+    detailQty = 1;
+    var item = inventory[browseIndex];
+    item.quantity = detailQty;
+    item.lastUpdated = new Date().toISOString().slice(0, 10);
+    saveInventoryToDisk();
+    renderDetail(item);
+  }
+  detailRows.addEventListener('click', function (e) {
+    if (e.target.closest('#detailQtyRow')) toggleDetailQtyFraction();
+  });
 
   detailDeleteBtn.addEventListener('click', function () {
     if (inventory.length === 0) return;
@@ -605,6 +672,7 @@
 
   window.addEventListener('sideClick', function () {
     if (currentView === 'home') runHomeAction();
+    else if (currentView === 'scan') attemptCapture();
     else if (currentView === 'recovery') runRecoveryAction();
     else if (currentView === 'itemCard') saveItemCard();
     else if (currentView === 'manual') saveManual();
@@ -612,7 +680,7 @@
   });
 
   window.addEventListener('longPressStart', function () {
-    if (currentView === 'scan') { stopVideoScanning(); showView('home'); }
+    if (currentView === 'scan') { showView('home'); }
     else if (currentView === 'recovery') { showView('home'); }
     else if (currentView === 'itemCard') {
       if (itemCardMode === 'existing') {
