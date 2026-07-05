@@ -77,6 +77,7 @@
   var itemCardMode = 'new'; // 'new' | 'existing'
   var itemCardOriginalQty = 0;
   var capturedPhotoDataUrl = null;
+  var lastCaptureCanvas = null;
 
   var recoveryIndex = 0;
   var RECOVERY_ACTIONS = ['vision', 'voice', 'barcode', 'manual'];
@@ -422,6 +423,7 @@
     scanStatus.textContent = 'Hold steady…';
     setTimeout(function () {
       var c = grabFrame();
+      lastCaptureCanvas = c;
       capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
 
       // Leave the live camera view as soon as the still is captured - OCR
@@ -437,10 +439,9 @@
         statusHint.textContent = line || 'Hold PTT to cancel';
         scanDebug.textContent = 'ocr: ' + line;
       })
-        .then(function (result) {
+        .then(function (barcode) {
           if (currentView !== 'status') return;
-          if (result.type === 'barcode') onBarcodeReady(result.value);
-          else onProductNameGuess(result.value);
+          onBarcodeReady(barcode);
         })
         .catch(function () {
           if (currentView !== 'status') return;
@@ -456,13 +457,25 @@
   function identifyFromCanvas(canvas, onProgress) {
     lastOcrDebug = '';
     lastNameOcrDebug = '';
-    return attemptOcrFallback(canvas, onProgress)
-      .then(function (barcode) { return { type: 'barcode', value: barcode }; })
-      .catch(function () {
-        if (currentView === 'status') statusText.textContent = 'Reading product name…';
-        return attemptProductNameOcr(canvas, onProgress)
-          .then(function (query) { return { type: 'name-guess', value: query }; });
-      });
+    return attemptOcrFallback(canvas, onProgress);
+  }
+
+  // Product-name OCR used to run automatically the moment barcode OCR
+  // failed, and would jump straight to "Verify OCR guess" the instant it
+  // found any text with a couple of letters in it - including garbled
+  // nonsense misread from elsewhere in the frame. That silently hijacked
+  // the flow before the user ever saw the recovery menu (so "Enter
+  // barcode" was unreachable whenever a bogus guess happened to match).
+  // Now it only runs quietly in the background once the recovery menu is
+  // already showing, and only ever affects "Manual entry"'s pre-fill if
+  // the user actually picks that option - it can never navigate on its own.
+  var pendingNameGuess = null;
+
+  function tryBackgroundNameGuess(canvas) {
+    pendingNameGuess = null;
+    attemptProductNameOcr(canvas).then(function (query) {
+      pendingNameGuess = query;
+    }).catch(function () {});
   }
 
   // ---- OCR fallback: read the printed digit line under the bars ----
@@ -789,13 +802,11 @@
       c.width = img.naturalWidth; c.height = img.naturalHeight;
       var ctx = c.getContext('2d');
       ctx.drawImage(img, 0, 0, c.width, c.height);
+      lastCaptureCanvas = c;
       capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
 
       identifyFromCanvas(c)
-        .then(function (result) {
-          if (result.type === 'barcode') onBarcodeReady(result.value);
-          else onProductNameGuess(result.value);
-        })
+        .then(function (barcode) { onBarcodeReady(barcode); })
         .catch(function () { onBarcodeReady(null); });
 
       URL.revokeObjectURL(img.src);
@@ -816,10 +827,8 @@
       pendingItem = { id: 'manual-' + Date.now(), barcode: null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: capturedPhotoDataUrl, source: 'manual' };
       showView('recovery');
       renderRecoveryPhoto();
-      recoveryDebug.textContent = [
-        lastOcrDebug ? ('OCR: ' + lastOcrDebug) : '',
-        lastNameOcrDebug ? ('Name: ' + lastNameOcrDebug) : ''
-      ].filter(function (s) { return s; }).join(' · ');
+      recoveryDebug.textContent = lastOcrDebug ? ('OCR: ' + lastOcrDebug) : '';
+      if (lastCaptureCanvas) tryBackgroundNameGuess(lastCaptureCanvas);
       return;
     }
     showView('lookup');
@@ -879,7 +888,13 @@
     if (action === 'vision') attemptVisionAI();
     else if (action === 'voice') attemptVoiceEntry();
     else if (action === 'barcode') enterBarcodeEntry();
-    else if (action === 'manual') enterManual(false);
+    else if (action === 'manual') {
+      // If the background product-name OCR (started when the recovery
+      // menu appeared) found a plausible guess by now, use it - otherwise
+      // a completely blank form, same as picking Manual entry always did.
+      if (pendingNameGuess) onProductNameGuess(pendingNameGuess);
+      else enterManual(false);
+    }
   }
 
   // ---- Vision AI (best-effort; the SDK has no documented way to attach image
