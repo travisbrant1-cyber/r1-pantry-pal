@@ -1024,6 +1024,8 @@
     renderManualQty();
   }
   manualQtyValue.addEventListener('click', toggleManualQtyFraction);
+  document.getElementById('manualQtyMinus').addEventListener('click', function () { adjustManualQty(-1); });
+  document.getElementById('manualQtyPlus').addEventListener('click', function () { adjustManualQty(1); });
 
   manualSaveBtn.addEventListener('click', saveManual);
   function saveManual() {
@@ -1114,6 +1116,8 @@
     renderItemQty();
   }
   qtyValue.addEventListener('click', toggleItemQtyFraction);
+  document.getElementById('itemQtyMinus').addEventListener('click', function () { adjustItemQty(-1); });
+  document.getElementById('itemQtyPlus').addEventListener('click', function () { adjustItemQty(1); });
 
   itemSaveBtn.addEventListener('click', saveItemCard);
   function saveItemCard() {
@@ -1186,7 +1190,10 @@
   function renderDetail(item) {
     detailName.textContent = item.productName || '(unnamed)';
     detailRows.innerHTML =
-      '<div class="detail-row" id="detailQtyRow"><span class="dr-label">Quantity</span><span class="dr-value">' + formatQty(detailQty, detailQtyFraction) + '</span></div>' +
+      '<div class="detail-row" id="detailQtyRow"><span class="dr-label">Quantity</span>' +
+      '<span><button class="qty-btn" id="detailQtyMinus" aria-label="Decrease quantity">&minus;</button> ' +
+      '<span class="dr-value">' + formatQty(detailQty, detailQtyFraction) + '</span> ' +
+      '<button class="qty-btn" id="detailQtyPlus" aria-label="Increase quantity">+</button></span></div>' +
       row('Location', item.location || 'Pantry') +
       row('Brand', item.brand || '—') +
       row('Barcode', item.barcode || '—') +
@@ -1219,6 +1226,8 @@
     renderDetail(item);
   }
   detailRows.addEventListener('click', function (e) {
+    if (e.target.closest('#detailQtyMinus')) { adjustDetailQty(-1); return; }
+    if (e.target.closest('#detailQtyPlus')) { adjustDetailQty(1); return; }
     if (e.target.closest('#detailQtyRow')) toggleDetailQtyFraction();
   });
 
@@ -1277,6 +1286,47 @@
     else if (currentView === 'diag') { showView('home'); }
     else if (currentView === 'barcode') { showView('recovery'); }
   });
+
+  // ---- Fit the fixed 240x282 design to whatever browser window it's
+  // actually running in. On the real R1 the viewport already is 240x282,
+  // so this computes a scale of ~1 and changes nothing. Anywhere else
+  // (phone, desktop browser) it scales the same unmodified UI up to fill
+  // the available space instead of sitting tiny in a corner. ----
+  var appEl = document.getElementById('app');
+  function fitStage() {
+    var scale = Math.min(window.innerWidth / 240, window.innerHeight / 282);
+    appEl.style.transform = 'scale(' + Math.min(scale, 3) + ')';
+  }
+  window.addEventListener('resize', fitStage);
+  window.addEventListener('orientationchange', fitStage);
+  window.addEventListener('load', fitStage);
+  fitStage();
+  setTimeout(fitStage, 200);
+
+  // ---- Touch/mouse support for hardware-only gestures ----
+  // Menu items, save buttons, etc. already respond to a direct tap/click
+  // (see their own addEventListener('click', ...) calls above), so the
+  // R1's scroll wheel + PTT (sideClick) aren't required for those - but
+  // "hold PTT to go back/cancel" has no non-R1 equivalent at all. Rather
+  // than special-case every view again, a press-and-hold (~500ms) anywhere
+  // dispatches the exact same synthetic 'longPressStart' event the R1
+  // fires, so all the existing per-view back/cancel logic runs unchanged
+  // on any device.
+  var HOLD_MS = 500;
+  var holdTimer = null;
+  function startHoldTimer() {
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(function () {
+      window.dispatchEvent(new Event('longPressStart'));
+    }, HOLD_MS);
+  }
+  function cancelHoldTimer() {
+    clearTimeout(holdTimer);
+  }
+  appEl.addEventListener('pointerdown', startHoldTimer);
+  appEl.addEventListener('pointerup', cancelHoldTimer);
+  appEl.addEventListener('pointercancel', cancelHoldTimer);
+  appEl.addEventListener('pointerleave', cancelHoldTimer);
 
   // ---- Init ----
   loadInventory().then(function () {

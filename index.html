@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=240, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pantry Pal</title>
     <link rel="icon" href="icon.png">
     <link rel="stylesheet" href="css/styles.css">
@@ -53,9 +53,11 @@
                 <div class="item-brand" id="itemBrand"></div>
                 <div class="qty-row">
                     <span class="qty-label">Qty</span>
+                    <button class="qty-btn" id="itemQtyMinus" aria-label="Decrease quantity">&minus;</button>
                     <div class="qty-stepper">
                         <span class="qty-value" id="qtyValue">1</span>
                     </div>
+                    <button class="qty-btn" id="itemQtyPlus" aria-label="Increase quantity">+</button>
                     <span class="qty-location" id="itemLocation">Pantry</span>
                 </div>
                 <button class="btn-primary" id="itemSaveBtn">Save</button>
@@ -88,9 +90,11 @@
                 <input type="text" id="manualName" class="text-input" placeholder="Product name">
                 <div class="qty-row">
                     <span class="qty-label">Qty</span>
+                    <button class="qty-btn" id="manualQtyMinus" aria-label="Decrease quantity">&minus;</button>
                     <div class="qty-stepper">
                         <span class="qty-value" id="manualQtyValue">1</span>
                     </div>
+                    <button class="qty-btn" id="manualQtyPlus" aria-label="Increase quantity">+</button>
                     <span class="qty-location">Pantry</span>
                 </div>
                 <button class="btn-primary" id="manualSaveBtn">Save</button>
