@@ -39,6 +39,7 @@
   var itemHint = document.getElementById('itemHint');
 
   var recoveryPhoto = document.getElementById('recoveryPhoto');
+  var recoveryDebug = document.getElementById('recoveryDebug');
   var recoveryMenu = document.getElementById('recoveryMenu');
 
   var statusText = document.getElementById('statusText');
@@ -658,6 +659,7 @@
       pendingItem = { id: 'manual-' + Date.now(), barcode: null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: capturedPhotoDataUrl, source: 'manual' };
       showView('recovery');
       renderRecoveryPhoto();
+      recoveryDebug.textContent = lastOcrDebug ? ('OCR: ' + lastOcrDebug) : '';
       return;
     }
     showView('lookup');
@@ -696,6 +698,7 @@
     pendingItem = { id: barcode || ('manual-' + Date.now()), barcode: barcode || null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: capturedPhotoDataUrl, source: 'unknown' };
     showView('recovery');
     renderRecoveryPhoto();
+    recoveryDebug.textContent = 'Barcode read: ' + barcode + ' — not in product database';
   }
 
   function renderRecoveryPhoto() {
