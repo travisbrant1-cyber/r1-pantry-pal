@@ -65,13 +65,21 @@ Vanilla JS, no build step, no framework — one `index.html`, `css/styles.css`, 
 
 - **Camera-ready race condition** (fixed in `cb6f4f9`, then made moot by the tap-to-capture rewrite): starting an async operation's continuation only from the triggering navigation event, not from whichever happens later (navigation vs. the async operation itself completing).
 - **Recovery view 3px overflow** on the 240×282 frame: caught via `scrollHeight > clientHeight` checks in preview, not visible in a screenshot that happened to just barely fit. Every view still has `overflow-y: auto` as a safety net regardless — see the `r1-creation` skill's testing methodology for why bare pass/fail isn't enough margin.
+- **Barcode capture downsampled to a fixed 160×120 canvas** (fixed in `b4bcb0f`): destroyed the fine bar spacing barcodes need to decode, regardless of distance or focus — would only ever work by luck. Capture now uses the camera's native resolution (`videoWidth`/`videoHeight`); a 160×120 thumbnail is still generated afterward, but only for the stored item photo, from the already-captured full-res frame.
+- **GitHub Pages build got stuck in `"building"` for this repo** during real-hardware debugging — real content deployed correctly per `git push`, but the Pages build never advanced, so the live site kept serving stale code well after fixes had been pushed and looked like device-side caching at first. See the `r1-creation` skill's `deployment-pipeline.md` (stuck-build gotcha) — always verify the live URL actually changed before trusting a "fixed" report from real-hardware testing.
+
+## R1 camera hardware facts (confirmed on real device)
+
+- **Fixed-focus lens, sharp only from roughly 1–2 feet away.** Confirmed by holding a real barcode at varying distances while watching the live preview: it never sharpens at typical close scanning range (a few inches), only once backed off to about a foot or more. The scan hint text was updated to say this explicitly (`"Hold ~1-2ft back, click PTT"`) — don't revert that copy to anything implying close-range scanning without re-confirming this.
+- A `zoom: 2` and `focusMode: 'continuous'` are requested as best-effort `advanced` getUserMedia constraints to help compensate for the barcode being smaller in-frame at that distance — unverified whether the R1's camera actually honors either; harmless no-op if unsupported.
+- A settle delay (~300ms) plus a 3-frame decode burst was added to rule out button-press motion blur as a contributing factor — this shipped before the focus-distance finding, so its own marginal benefit (versus the distance fix alone) is unconfirmed.
 
 ## What's unverified on real hardware
 
 This was all built and tested in a browser preview (see the `r1-creation` skill for why: no camera/mic in a headless preview browser). Specifically unconfirmed on the actual R1:
-1. **Barcode capture reliability** — does tap-to-capture actually decode real-world barcodes at typical lighting/distance? This is the biggest open question.
+1. **Barcode capture reliability at the correct ~1-2ft distance** — the fixed-160×120-canvas bug and the too-close focus distance are both now identified and addressed; whether decoding is actually reliable once scanning from the right distance, with the current resolution/zoom/burst logic, still needs a fresh real-device retest.
 2. **Voice entry accuracy** — does the Web Speech API even produce a `SpeechRecognition` instance in the R1's WebView, and if so, how accurate is it?
-3. Whether `getUserMedia` camera access continues to work reliably (it worked for Color Picker; assumed but not re-verified here).
+3. ~~Whether `getUserMedia` camera access continues to work reliably~~ — confirmed working: real-device testing got a live 1080×1920 stream.
 
 ## Original spec (condensed)
 

@@ -186,7 +186,7 @@
         facingMode: 'environment',
         width: { ideal: 1920 },
         height: { ideal: 1080 },
-        advanced: [{ focusMode: 'continuous' }]
+        advanced: [{ focusMode: 'continuous' }, { zoom: 2 }]
       },
       audio: false
     })
@@ -197,7 +197,7 @@
         videoActive = true;
         cameraUnavailable = false;
         statusDot.classList.add('live');
-        if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
+        if (currentView === 'scan') scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
         camPreview.addEventListener('loadedmetadata', function () {
           scanDebug.textContent = 'cam ' + camPreview.videoWidth + 'x' + camPreview.videoHeight;
         }, { once: true });
@@ -229,7 +229,7 @@
 
   function enterScan() {
     showView('scan');
-    if (videoActive) scanStatus.textContent = 'Point at a barcode, click PTT';
+    if (videoActive) scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
     else if (cameraUnavailable) scanStatus.textContent = 'Tap the frame to choose a photo';
     else scanStatus.textContent = 'Starting camera…';
   }
@@ -289,7 +289,7 @@
         .catch(function () {
           scanStatus.textContent = 'No barcode found — try again';
           setTimeout(function () {
-            if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
+            if (currentView === 'scan') scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
           }, 1400);
         });
     }, CAPTURE_SETTLE_MS);
