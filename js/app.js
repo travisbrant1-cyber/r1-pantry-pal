@@ -269,13 +269,32 @@
     });
   }
 
+  // Unlike the synthetic tests above, this exercises the real Tesseract
+  // worker and streams its own reported init stage/progress into the same
+  // line live - so if it hangs, we see exactly which stage it hung on
+  // (fetching the wasm core, fetching/decompressing the language data,
+  // initializing the API) instead of just an eventual timeout.
+  function runDiagOcrTest(index) {
+    var label = 'Tesseract worker init (real)';
+    setDiagLine(index, label + ': running…');
+    var testPromise = getOcrWorker(function (m) {
+      setDiagLine(index, label + ': ' + formatOcrProgress(m));
+    });
+    return diagWithTimeout(testPromise, 30000).then(function () {
+      setDiagLine(index, label + ': ok');
+    }, function (err) {
+      setDiagLine(index, label + ': FAIL - ' + ((err && err.message) || err));
+    });
+  }
+
   function enterDiag() {
     showView('diag');
     diagLines = [];
     renderDiag();
     runDiagTest(0, 'Worker (basic)', testWorkerBasic)
       .then(function () { return runDiagTest(1, 'WebAssembly (main thread)', testWasmBasic); })
-      .then(function () { return runDiagTest(2, 'WebAssembly (inside Worker)', testWasmInWorker); });
+      .then(function () { return runDiagTest(2, 'WebAssembly (inside Worker)', testWasmInWorker); })
+      .then(function () { return runDiagOcrTest(3); });
   }
 
   // ---- Camera / scanning ----
@@ -459,7 +478,11 @@
     return tesseractScriptPromise;
   }
 
-  function getOcrWorker() {
+  // Tesseract reports its own init stages (fetching/instantiating the wasm
+  // core, fetching/decompressing the language data, initializing the API)
+  // via this logger - surfacing it is what tells us WHERE an init hangs,
+  // instead of just that it eventually times out.
+  function getOcrWorker(onProgress) {
     if (ocrWorkerPromise) return ocrWorkerPromise;
     ocrWorkerPromise = loadTesseractScript().then(function () {
       return window.Tesseract.createWorker('eng', 1, {
@@ -467,12 +490,18 @@
         corePath: absoluteUrl(TESSERACT_BASE + 'tesseract-core-lstm.wasm.js'),
         langPath: absoluteUrl(TESSERACT_BASE),
         gzip: true,
-        logger: function () {}
+        logger: function (m) { if (onProgress) onProgress(m); }
       });
     }).then(function (worker) {
       return worker.setParameters({ tessedit_char_whitelist: '0123456789' }).then(function () { return worker; });
     });
     return ocrWorkerPromise;
+  }
+
+  function formatOcrProgress(m) {
+    if (!m) return '';
+    var pct = (typeof m.progress === 'number') ? ' ' + Math.round(m.progress * 100) + '%' : '';
+    return (m.status || '') + pct;
   }
 
   // Universal GTIN check digit: from the digit left of the check digit,
@@ -538,7 +567,7 @@
   }
 
   function attemptOcrFallback(canvas) {
-    var ocrPromise = getOcrWorker().then(function (worker) {
+    var ocrPromise = getOcrWorker(function (m) { scanDebug.textContent = 'ocr: ' + formatOcrProgress(m); }).then(function (worker) {
       return worker.recognize(canvas);
     }, function (err) {
       lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
