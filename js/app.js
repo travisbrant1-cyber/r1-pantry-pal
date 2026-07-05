@@ -524,6 +524,22 @@
     return ((10 - (sum % 10)) % 10) === check;
   }
 
+  // A barcode's tall guard bars (start/end/middle) look visually similar to
+  // the numeral "1" with a digit-only whitelist, so OCR can insert one
+  // stray extra "1" at either edge of an otherwise-correct read. If the
+  // combined string is exactly one character longer than a valid GTIN
+  // length, try trimming a single character off either edge and re-check
+  // the checksum - only the edges, since that's where a guard bar would
+  // actually appear, not scattered through the middle.
+  function tryValidGTIN(str) {
+    if (isValidGTIN(str)) return str;
+    if ([9, 13, 14].indexOf(str.length) !== -1) {
+      if (isValidGTIN(str.slice(1))) return str.slice(1);
+      if (isValidGTIN(str.slice(0, -1))) return str.slice(0, -1);
+    }
+    return null;
+  }
+
   // OCR with a digit whitelist still only emits digits and whitespace, so
   // "words" are digit groups - the printed line is often grouped with
   // spaces (e.g. "0 12345 67890 5"), so try concatenating a few adjacent
@@ -535,7 +551,8 @@
       var combined = '';
       for (var j = i; j < Math.min(tokens.length, i + maxSpan); j++) {
         combined += tokens[j];
-        if (isValidGTIN(combined)) return combined;
+        var fixed = tryValidGTIN(combined);
+        if (fixed) return fixed;
       }
     }
     return null;
