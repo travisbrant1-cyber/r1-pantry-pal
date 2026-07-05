@@ -427,20 +427,37 @@
       statusHint.textContent = 'Hold PTT to cancel';
       showView('status');
 
-      attemptOcrFallback(c, function (m) {
+      identifyFromCanvas(c, function (m) {
         var line = formatOcrProgress(m);
         statusHint.textContent = line || 'Hold PTT to cancel';
         scanDebug.textContent = 'ocr: ' + line;
       })
-        .then(function (barcode) {
+        .then(function (result) {
           if (currentView !== 'status') return;
-          onBarcodeReady(barcode);
+          if (result.type === 'barcode') onBarcodeReady(result.value);
+          else onProductNameGuess(result.value);
         })
         .catch(function () {
           if (currentView !== 'status') return;
           onBarcodeReady(null);
         });
     }, CAPTURE_SETTLE_MS);
+  }
+
+  // Barcode OCR first (fast, deterministic, cache-friendly); if that finds
+  // no valid code, fall back to reading the brand/product name text - a
+  // barcode misread is common on small print, but the product name is
+  // often printed much larger and may still be legible.
+  function identifyFromCanvas(canvas, onProgress) {
+    lastOcrDebug = '';
+    lastNameOcrDebug = '';
+    return attemptOcrFallback(canvas, onProgress)
+      .then(function (barcode) { return { type: 'barcode', value: barcode }; })
+      .catch(function () {
+        if (currentView === 'status') statusText.textContent = 'Reading product name…';
+        return attemptProductNameOcr(canvas, onProgress)
+          .then(function (query) { return { type: 'name-guess', value: query }; });
+      });
   }
 
   // ---- OCR fallback: read the printed digit line under the bars ----
@@ -676,6 +693,72 @@
     });
   }
 
+  // ---- Product-name identification: last resort before manual entry ----
+  // There is no documented way to attach a photo to the R1's PluginMessageHandler
+  // bridge (see r1-creation skill sdk-facts.md), confirmed on real hardware -
+  // "Vision AI" genuinely cannot see the image, so it's not a fixable path for
+  // real product recognition. Reading the brand/product name text directly
+  // (rather than the barcode's digits) and searching for it is fully within
+  // our own control instead. Reuses the same worker as barcode OCR, but
+  // without the digit whitelist - restored afterward so barcode OCR on the
+  // next scan isn't affected.
+  var lastNameOcrDebug = '';
+
+  function extractProductNameQuery(words) {
+    var rows = clusterWordsIntoRows(words);
+    for (var i = 0; i < rows.length; i++) {
+      var text = rows[i].words.map(function (w) { return w.text; }).join(' ').trim();
+      // Skip rows that are just digits/symbols (prices, codes) - want the
+      // actual brand/product text, which reliably contains real letters.
+      if (/[A-Za-z]{2,}/.test(text)) return text;
+    }
+    return null;
+  }
+
+  function attemptProductNameOcr(canvas, onProgress) {
+    var ocrCanvas = downscaleForOcr(canvas);
+    var namePromise = getOcrWorker(onProgress).then(function (worker) {
+      return worker.setParameters({ tessedit_char_whitelist: '' })
+        .then(function () { return worker.recognize(ocrCanvas); })
+        .then(function (result) {
+          return worker.setParameters({ tessedit_char_whitelist: '0123456789' }).then(function () { return result; });
+        }, function (err) {
+          return worker.setParameters({ tessedit_char_whitelist: '0123456789' }).then(function () { throw err; });
+        });
+    }, function (err) {
+      lastNameOcrDebug = 'name OCR load failed: ' + ((err && err.message) || err);
+      throw err;
+    }).then(function (result) {
+      var words = (result && result.data && result.data.words) || [];
+      var query = extractProductNameQuery(words);
+      if (!query) {
+        lastNameOcrDebug = 'no product name text found';
+        throw new Error('no product name text found');
+      }
+      return query;
+    });
+    return withTimeout(namePromise, OCR_TIMEOUT_MS, 'name OCR').catch(function (err) {
+      if (/timed out/.test(err.message)) lastNameOcrDebug = err.message;
+      throw err;
+    });
+  }
+
+  // A live text search against Open Food Facts was tried and abandoned:
+  // neither of their search endpoints sends the CORS headers needed for a
+  // static, backend-less site to call them directly from browser JS (only
+  // their single-barcode lookup does) - confirmed by testing an actual
+  // browser fetch, not just curl, which doesn't enforce CORS and so
+  // misleadingly appeared to work. Pre-filling the manual-entry form with
+  // the OCR'd guess instead needs no network call and no CORS support -
+  // it just saves typing, with the same edit-before-save safety net as
+  // every other recovery path.
+  function onProductNameGuess(query) {
+    pendingItem = { id: 'manual-' + Date.now(), barcode: null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: capturedPhotoDataUrl, source: 'ocr-name-guess' };
+    manualName.value = query;
+    manualHeading.textContent = 'Verify OCR guess';
+    enterManual(true);
+  }
+
   document.querySelector('#scanView .cam-frame').addEventListener('click', attemptCapture);
   fileInput.addEventListener('change', function (e) {
     var file = e.target.files[0];
@@ -688,8 +771,11 @@
       ctx.drawImage(img, 0, 0, c.width, c.height);
       capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
 
-      attemptOcrFallback(c)
-        .then(function (barcode) { onBarcodeReady(barcode); })
+      identifyFromCanvas(c)
+        .then(function (result) {
+          if (result.type === 'barcode') onBarcodeReady(result.value);
+          else onProductNameGuess(result.value);
+        })
         .catch(function () { onBarcodeReady(null); });
 
       URL.revokeObjectURL(img.src);
@@ -710,7 +796,10 @@
       pendingItem = { id: 'manual-' + Date.now(), barcode: null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: capturedPhotoDataUrl, source: 'manual' };
       showView('recovery');
       renderRecoveryPhoto();
-      recoveryDebug.textContent = lastOcrDebug ? ('OCR: ' + lastOcrDebug) : '';
+      recoveryDebug.textContent = [
+        lastOcrDebug ? ('OCR: ' + lastOcrDebug) : '',
+        lastNameOcrDebug ? ('Name: ' + lastNameOcrDebug) : ''
+      ].filter(function (s) { return s; }).join(' · ');
       return;
     }
     showView('lookup');
