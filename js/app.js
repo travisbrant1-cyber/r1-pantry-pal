@@ -541,15 +541,46 @@
     return null;
   }
 
-  // A real-world capture usually has other printed numbers on the package
-  // (lot codes, item numbers) besides the actual barcode's digit line -
-  // concatenating tokens across the *whole* recognized text merges digits
-  // from unrelated lines into one bogus string. Tesseract reports text
-  // per physical line (with its own bounding box), so extraction is scoped
-  // to one line at a time instead.
-  function extractValidBarcodeFromOcrLines(lines) {
-    for (var i = 0; i < lines.length; i++) {
-      var code = extractValidBarcodeFromLineText(lines[i].text || '');
+  // Tesseract's own "lines" grouping (used previously) is too coarse when
+  // two print regions sit close together, e.g. a small package's nutrition
+  // facts table crammed right next to its barcode - real-hardware testing
+  // showed digits from both getting merged into one recognized line, which
+  // defeated per-line scoping entirely. Clustering words ourselves by
+  // vertical position, with a tighter overlap tolerance than Tesseract
+  // uses, keeps a barcode's own digit row separate from an adjacent block
+  // of unrelated small print instead.
+  function clusterWordsIntoRows(words) {
+    var sorted = words.slice().sort(function (a, b) { return a.bbox.y0 - b.bbox.y0; });
+    var rows = [];
+    sorted.forEach(function (w) {
+      var h = w.bbox.y1 - w.bbox.y0;
+      var cy = (w.bbox.y0 + w.bbox.y1) / 2;
+      var row = null;
+      for (var i = 0; i < rows.length; i++) {
+        var tolerance = Math.max(h, rows[i].avgHeight) * 0.6;
+        if (Math.abs(cy - rows[i].centerY) <= tolerance) { row = rows[i]; break; }
+      }
+      if (row) {
+        row.words.push(w);
+        row.centerY = (row.centerY * (row.words.length - 1) + cy) / row.words.length;
+        row.avgHeight = (row.avgHeight * (row.words.length - 1) + h) / row.words.length;
+      } else {
+        rows.push({ words: [w], centerY: cy, avgHeight: h });
+      }
+    });
+    rows.forEach(function (r) { r.words.sort(function (a, b) { return a.bbox.x0 - b.bbox.x0; }); });
+    // A barcode's digit line is printed distinctly larger than a dense
+    // nutrition table's numbers - try the largest-font row(s) first, since
+    // that's the more likely candidate.
+    rows.sort(function (a, b) { return b.avgHeight - a.avgHeight; });
+    return rows;
+  }
+
+  function extractValidBarcodeFromOcrWords(words) {
+    var rows = clusterWordsIntoRows(words);
+    for (var i = 0; i < rows.length; i++) {
+      var lineText = rows[i].words.map(function (w) { return w.text; }).join(' ');
+      var code = extractValidBarcodeFromLineText(lineText);
       if (code) return code;
     }
     return null;
@@ -612,8 +643,8 @@
       lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
       throw err;
     }).then(function (result) {
-      var lines = (result && result.data && result.data.lines) || [];
-      var code = extractValidBarcodeFromOcrLines(lines);
+      var words = (result && result.data && result.data.words) || [];
+      var code = extractValidBarcodeFromOcrWords(words);
       if (!code) {
         var text = (result && result.data && result.data.text) || '';
         var flat = text.replace(/\s+/g, ' ').trim();
