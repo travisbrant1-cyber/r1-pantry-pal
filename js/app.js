@@ -53,7 +53,7 @@
   var manualSaveBtn = document.getElementById('manualSaveBtn');
 
   var barcodeInput = document.getElementById('barcodeInput');
-  var barcodeSaveBtn = document.getElementById('barcodeSaveBtn');
+  var barcodeKeypad = document.getElementById('barcodeKeypad');
 
   var inventoryList = document.getElementById('inventoryList');
   var browseEmptyHint = document.getElementById('browseEmptyHint');
@@ -1047,22 +1047,30 @@
   // this camera; digit OCR occasionally still can't recover a checksum-
   // valid code either. Rather than force a full retype, this pre-fills
   // whatever raw (unvalidated) digits OCR's best-guess row contained, so
-  // fixing one or two wrong characters is enough - `inputmode="numeric"`
-  // on the input gets a real 10-key pad on the device instead of the full
-  // keyboard used for text fields.
+  // fixing one or two wrong characters is enough. Uses a custom on-screen
+  // keypad (not the OS keyboard) - real-device testing showed the R1's
+  // native keyboard doesn't honor `inputmode="numeric"`, so `<input>` is
+  // just a readonly display here; every digit comes from tapping our own
+  // buttons, which works the same regardless of platform keyboard quirks.
   function enterBarcodeEntry() {
     barcodeInput.value = lastOcrDigitGuess || '';
     showView('barcode');
-    setTimeout(function () { barcodeInput.focus(); }, 50);
   }
 
   function saveBarcodeEntry() {
     var digits = barcodeInput.value.replace(/[^0-9]/g, '');
-    if (!digits) { barcodeInput.focus(); return; }
+    if (!digits) return;
     onBarcodeReady(digits);
   }
 
-  barcodeSaveBtn.addEventListener('click', saveBarcodeEntry);
+  barcodeKeypad.addEventListener('click', function (e) {
+    var btn = e.target.closest('.key');
+    if (!btn) return;
+    var key = btn.getAttribute('data-key');
+    if (key === 'back') barcodeInput.value = barcodeInput.value.slice(0, -1);
+    else if (key === 'ok') saveBarcodeEntry();
+    else barcodeInput.value += key;
+  });
 
   // ---- Item card (new confirm / existing quantity adjust) ----
   var itemQtyNum = 1;

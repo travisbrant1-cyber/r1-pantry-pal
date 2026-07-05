@@ -97,13 +97,27 @@
                 <div class="hint">Scroll: qty &middot; Tap qty: fractions &middot; Click: save &middot; Hold: cancel</div>
             </div>
 
-            <!-- Barcode entry/correction - inputmode="numeric" gets a 10-key
-                 pad on the device instead of the full keyboard -->
+            <!-- Barcode entry/correction - a custom on-screen keypad, not
+                 the OS keyboard, since the R1's native keyboard doesn't seem
+                 to honor inputmode="numeric" (real-device confirmed) -->
             <div class="view" id="barcodeView">
                 <div class="item-heading">Enter barcode</div>
-                <input type="text" inputmode="numeric" pattern="[0-9]*" id="barcodeInput" class="text-input" placeholder="UPC / EAN digits">
-                <button class="btn-primary" id="barcodeSaveBtn">Look up</button>
-                <div class="hint">Click: look up &middot; Hold: back</div>
+                <input type="text" readonly id="barcodeInput" class="text-input" placeholder="UPC / EAN digits">
+                <div class="keypad" id="barcodeKeypad">
+                    <button class="key" data-key="1">1</button>
+                    <button class="key" data-key="2">2</button>
+                    <button class="key" data-key="3">3</button>
+                    <button class="key" data-key="4">4</button>
+                    <button class="key" data-key="5">5</button>
+                    <button class="key" data-key="6">6</button>
+                    <button class="key" data-key="7">7</button>
+                    <button class="key" data-key="8">8</button>
+                    <button class="key" data-key="9">9</button>
+                    <button class="key key-back" data-key="back">&larr;</button>
+                    <button class="key" data-key="0">0</button>
+                    <button class="key key-ok" data-key="ok">&#10003;</button>
+                </div>
+                <div class="hint">Tap keys to enter &middot; Hold: back</div>
             </div>
 
             <!-- Inventory browser -->

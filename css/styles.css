@@ -347,6 +347,40 @@ button:active {
     border-color: var(--accent-dim);
 }
 
+/* On-screen numeric keypad (barcode entry) - the R1's native keyboard
+   doesn't honor inputmode="numeric", so this replaces it entirely rather
+   than relying on any OS keyboard behavior. */
+.keypad {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 5px;
+}
+
+.key {
+    background: var(--bg-raised);
+    color: var(--ink);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    font-weight: 700;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.key-back {
+    color: var(--danger);
+}
+
+.key-ok {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+}
+
 .hint {
     font-size: 9px;
     color: var(--ink-faint);
