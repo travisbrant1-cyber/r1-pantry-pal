@@ -21,9 +21,10 @@ The original proposal (see "Original spec" below) defines four phases. What's ac
 - Inventory browser + item detail view
 - Fractional quantities (1/4, 1/2, 3/4) for bulk goods, via tap-to-toggle on any quantity field
 - Vision AI attempt and Web Speech API voice entry as unknown-product recovery options (pulled forward from Phase 2 — see caveats below, these are real but weak)
+- OCR fallback for the printed digit line under the bars, pulled forward from Phase 2 — see "OCR fallback" below
 
 **Not started** (still Phase 2–4 per the original roadmap, unchanged):
-- OCR fallback, expiration tracking + notifications
+- Expiration tracking + notifications
 - Shopping list, recipes, statistics, multi-location switching UI (the `location` field exists on every item and defaults to "Pantry", but there's no UI yet to create/switch locations)
 - Household sync, shared inventories, cloud backup
 
@@ -59,6 +60,10 @@ Vanilla JS, no build step, no framework — one `index.html`, `css/styles.css`, 
 
 **Voice entry works but breaks "offline-first."** Uses the standard Web Speech API, which needs network access to a cloud STT provider — a deliberate, acknowledged exception to the spec's offline-first principle. Tested that it degrades gracefully (falls back to the recovery menu within ~1.5s on no-mic/no-speech rather than hanging) but real recognition accuracy on-device is unverified.
 
+**OCR fallback reads the printed digit line, not the bars.** Added after real-hardware testing kept failing to decode bars even once resolution, capture, and focus-distance issues were all fixed — the working theory is the fixed-focus lens plus this camera's limits leave too few pixels-per-bar-module even at the correct distance, while the much larger printed digits underneath may still be legible. Implementation: `js/vendor/tesseract/` (Tesseract.js + the `eng` fast-trained LSTM model, self-hosted like ZXing to keep the offline-first principle — see below for why this is an exception in practice). Only triggers after the ZXing burst already failed, and only ever loads (~8MB) at that point, not on every scan. The OCR'd text is filtered to digit-only "words," adjacent words are tried concatenated (the printed line is often visually grouped like `0 12345 67890 5`), and any candidate is required to pass the standard GTIN check-digit algorithm (`isValidGTIN()`) before being accepted as a real barcode — this is the safety net against a misread digit silently pulling up the wrong product, on top of the existing confirm-before-save screen. Verified end-to-end in preview by blacking out the bars entirely on a generated barcode image and confirming OCR alone recovered the correct EAN-13 value and it flowed through the normal lookup/confirm pipeline.
+**OCR fallback breaks "offline-first" on first use, same tradeoff as voice entry.** The vendored Tesseract assets (~8MB: JS + wasm + trained-language data) are self-hosted on this repo's own GitHub Pages, not a third-party CDN, but they still have to be fetched over the network the first time OCR fallback actually runs (lazy-loaded, not part of initial page load). After that first fetch, ordinary browser caching should make it available offline — untested whether the R1's WebView actually caches this reliably.
+**A note for whoever touches Tesseract worker paths next:** `importScripts` inside the worker requires an *absolute* URL — a path like `js/vendor/tesseract/worker.min.js` that works fine for a normal `<script src>` tag throws `SyntaxError: ... is invalid` inside the worker. Paths are resolved via `absoluteUrl()` (`new URL(path, window.location.href).href`) so it also still works correctly when deployed under the GitHub Pages subpath, not just at a site root — don't revert to bare relative paths here.
+
 **Fractional quantities default to whole-number stepping, fractions are opt-in.** Scrolling normally steps by 1 (fast, matches the majority case — cans, boxes, bottles). Tapping the quantity number toggles a per-field mode that steps by 0.25 within [0, 1] instead (0, 1/4, 1/2, 3/4, 1), for bulk goods like flour where "how full is it" matters more than a count. This was a deliberate tradeoff over unifying the stepping into one scale — a single quarter-stepped scale would slow down the common case (0→6 cans would take 9 scroll clicks instead of 6). The tradeoff: you can't currently represent "1 and a quarter bags" — fraction mode tops out at 1 "full unit." Revisit if that turns out to matter in practice.
 
 ## Known bugs already found and fixed (for context, don't re-introduce)
@@ -78,8 +83,9 @@ Vanilla JS, no build step, no framework — one `index.html`, `css/styles.css`, 
 
 This was all built and tested in a browser preview (see the `r1-creation` skill for why: no camera/mic in a headless preview browser). Specifically unconfirmed on the actual R1:
 1. **Barcode capture reliability at the correct ~1-2ft distance** — the fixed-160×120-canvas bug and the too-close focus distance are both now identified and addressed; whether decoding is actually reliable once scanning from the right distance, with the current resolution/zoom/burst logic, still needs a fresh real-device retest.
-2. **Voice entry accuracy** — does the Web Speech API even produce a `SpeechRecognition` instance in the R1's WebView, and if so, how accurate is it?
-3. ~~Whether `getUserMedia` camera access continues to work reliably~~ — confirmed working: real-device testing got a live 1080×1920 stream.
+2. **OCR fallback on real hardware** — verified end-to-end only in browser preview (real barcode image with bars blacked out, file-input path). Untested on the actual R1: whether the ~8MB Tesseract download completes/caches reliably over the device's connection, and real-world OCR accuracy against an actual blurry/skewed camera capture rather than a clean synthetic image.
+3. **Voice entry accuracy** — does the Web Speech API even produce a `SpeechRecognition` instance in the R1's WebView, and if so, how accurate is it?
+4. ~~Whether `getUserMedia` camera access continues to work reliably~~ — confirmed working: real-device testing got a live 1080×1920 stream.
 
 ## Original spec (condensed)
 

@@ -262,8 +262,11 @@
   var CAPTURE_ATTEMPTS = 3;
   var CAPTURE_RETRY_MS = 150;
 
+  var lastFrameCanvas = null;
+
   function tryDecodeBurst(attemptsLeft) {
     var c = grabFrame();
+    lastFrameCanvas = c;
     if (!capturedPhotoDataUrl) capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
     scanDebug.textContent = 'cam ' + c.width + 'x' + c.height + ' · attempt ' + (CAPTURE_ATTEMPTS - attemptsLeft + 1) + '/' + CAPTURE_ATTEMPTS;
     return decodeFromCanvas(c).catch(function (err) {
@@ -287,10 +290,15 @@
       tryDecodeBurst(CAPTURE_ATTEMPTS)
         .then(function (barcode) { onBarcodeReady(barcode); })
         .catch(function () {
-          scanStatus.textContent = 'No barcode found — try again';
-          setTimeout(function () {
-            if (currentView === 'scan') scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
-          }, 1400);
+          scanStatus.textContent = 'Bars unclear, trying digits…';
+          attemptOcrFallback(lastFrameCanvas)
+            .then(function (barcode) { onBarcodeReady(barcode); })
+            .catch(function () {
+              scanStatus.textContent = 'No barcode found — try again';
+              setTimeout(function () {
+                if (currentView === 'scan') scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
+              }, 1400);
+            });
         });
     }, CAPTURE_SETTLE_MS);
   }
@@ -308,6 +316,98 @@
     });
   }
 
+  // ---- OCR fallback: read the printed digit line under the bars ----
+  // The bars themselves need enough resolution to resolve narrow modules;
+  // the human-readable digits printed under them are much larger and may
+  // stay legible even when the bars don't, especially at this camera's
+  // longer-than-usual fixed focus distance. Tesseract is loaded lazily
+  // (only once bar decoding has already failed) since it's an ~8MB vendored
+  // dependency - not something to pay for on every successful scan.
+  var TESSERACT_BASE = 'js/vendor/tesseract/';
+  var tesseractScriptPromise = null;
+  var ocrWorkerPromise = null;
+
+  // importScripts inside the worker requires an absolute URL - a relative
+  // one fails there even though it works fine for a normal <script src>,
+  // and it must be resolved against this page's own URL (not site root)
+  // so it still works when deployed under a GitHub Pages subpath.
+  function absoluteUrl(path) {
+    return new URL(path, window.location.href).href;
+  }
+
+  function loadTesseractScript() {
+    if (tesseractScriptPromise) return tesseractScriptPromise;
+    tesseractScriptPromise = new Promise(function (resolve, reject) {
+      if (window.Tesseract) { resolve(); return; }
+      var s = document.createElement('script');
+      s.src = TESSERACT_BASE + 'tesseract.min.js';
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error('failed to load tesseract.min.js')); };
+      document.head.appendChild(s);
+    });
+    return tesseractScriptPromise;
+  }
+
+  function getOcrWorker() {
+    if (ocrWorkerPromise) return ocrWorkerPromise;
+    ocrWorkerPromise = loadTesseractScript().then(function () {
+      return window.Tesseract.createWorker('eng', 1, {
+        workerPath: absoluteUrl(TESSERACT_BASE + 'worker.min.js'),
+        corePath: absoluteUrl(TESSERACT_BASE + 'tesseract-core-lstm.wasm.js'),
+        langPath: absoluteUrl(TESSERACT_BASE),
+        gzip: true,
+        logger: function () {}
+      });
+    }).then(function (worker) {
+      return worker.setParameters({ tessedit_char_whitelist: '0123456789' }).then(function () { return worker; });
+    });
+    return ocrWorkerPromise;
+  }
+
+  // Universal GTIN check digit: from the digit left of the check digit,
+  // weights alternate 3,1,3,1... - this same rule covers UPC-A (12),
+  // EAN-13 (13) and EAN-8 (8) without special-casing each format.
+  function isValidGTIN(str) {
+    if (!/^\d+$/.test(str)) return false;
+    if (str.length !== 8 && str.length !== 12 && str.length !== 13) return false;
+    var digits = str.split('').map(function (c) { return c.charCodeAt(0) - 48; });
+    var check = digits.pop();
+    var sum = 0;
+    for (var i = 0; i < digits.length; i++) {
+      var weight = ((digits.length - 1 - i) % 2 === 0) ? 3 : 1;
+      sum += digits[i] * weight;
+    }
+    return ((10 - (sum % 10)) % 10) === check;
+  }
+
+  // OCR with a digit whitelist still only emits digits and whitespace, so
+  // "words" are digit groups - the printed line is often grouped with
+  // spaces (e.g. "0 12345 67890 5"), so try concatenating a few adjacent
+  // groups too, not just each group alone.
+  function extractValidBarcodeFromOcrText(text) {
+    var tokens = text.split(/[^0-9]+/).filter(function (t) { return t.length > 0; });
+    var maxSpan = 4;
+    for (var i = 0; i < tokens.length; i++) {
+      var combined = '';
+      for (var j = i; j < Math.min(tokens.length, i + maxSpan); j++) {
+        combined += tokens[j];
+        if (isValidGTIN(combined)) return combined;
+      }
+    }
+    return null;
+  }
+
+  function attemptOcrFallback(canvas) {
+    return getOcrWorker().then(function (worker) {
+      return worker.recognize(canvas);
+    }).then(function (result) {
+      var text = (result && result.data && result.data.text) || '';
+      var code = extractValidBarcodeFromOcrText(text);
+      if (!code) throw new Error('no valid barcode found in OCR text');
+      return code;
+    });
+  }
+
   document.querySelector('#scanView .cam-frame').addEventListener('click', attemptCapture);
   fileInput.addEventListener('change', function (e) {
     var file = e.target.files[0];
@@ -322,7 +422,11 @@
 
       decodeFromCanvas(c)
         .then(function (barcode) { onBarcodeReady(barcode); })
-        .catch(function () { onBarcodeReady(null); });
+        .catch(function () {
+          attemptOcrFallback(c)
+            .then(function (barcode) { onBarcodeReady(barcode); })
+            .catch(function () { onBarcodeReady(null); });
+        });
 
       URL.revokeObjectURL(img.src);
     };
