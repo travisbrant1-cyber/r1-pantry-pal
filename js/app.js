@@ -295,6 +295,7 @@
             .then(function (barcode) { onBarcodeReady(barcode); })
             .catch(function () {
               scanStatus.textContent = 'No barcode found — try again';
+              scanDebug.textContent = lastOcrDebug;
               setTimeout(function () {
                 if (currentView === 'scan') scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
               }, 1400);
@@ -397,13 +398,22 @@
     return null;
   }
 
+  var lastOcrDebug = '';
+
   function attemptOcrFallback(canvas) {
     return getOcrWorker().then(function (worker) {
       return worker.recognize(canvas);
+    }, function (err) {
+      lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
+      throw err;
     }).then(function (result) {
       var text = (result && result.data && result.data.text) || '';
       var code = extractValidBarcodeFromOcrText(text);
-      if (!code) throw new Error('no valid barcode found in OCR text');
+      if (!code) {
+        var flat = text.replace(/\s+/g, ' ').trim();
+        lastOcrDebug = 'ocr read "' + flat.slice(0, 30) + '" no valid code';
+        throw new Error('no valid barcode found in OCR text');
+      }
       return code;
     });
   }
