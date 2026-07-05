@@ -389,10 +389,22 @@
   // bar spacing is destroyed by downsampling to a small fixed size. A
   // separate small thumbnail (for the item photo shown in the UI) is cropped
   // from the same full-resolution frame afterwards.
+  //
+  // Fit "contain" (preserve aspect ratio, letterbox) rather than stretching
+  // to fill 160x120 - a real captured photo is rarely 4:3, and forcing it
+  // into that box distorted every stored/displayed thumbnail app-wide.
+  // Confirmed as a real, visible bug from a user-reported screenshot: the
+  // recovery-screen preview looked like an oddly squished wide strip.
   function makeThumbnail(source, sw, sh) {
     var t = document.createElement('canvas');
     t.width = 160; t.height = 120;
-    t.getContext('2d').drawImage(source, 0, 0, sw, sh, 0, 0, t.width, t.height);
+    var ctx = t.getContext('2d');
+    ctx.fillStyle = '#150f0d';
+    ctx.fillRect(0, 0, t.width, t.height);
+    var scale = Math.min(t.width / sw, t.height / sh);
+    var dw = sw * scale, dh = sh * scale;
+    var dx = (t.width - dw) / 2, dy = (t.height - dh) / 2;
+    ctx.drawImage(source, 0, 0, sw, sh, dx, dy, dw, dh);
     return t.toDataURL('image/jpeg', 0.6);
   }
 
@@ -498,6 +510,7 @@
   function identifyFromCanvas(canvas, onProgress) {
     lastOcrDebug = '';
     lastNameOcrDebug = '';
+    lastOcrAnalyzedCanvas = null;
     return attemptOcrFallback(canvas, onProgress);
   }
 
@@ -698,6 +711,7 @@
   }
 
   var lastOcrDigitGuess = '';
+  var lastOcrAnalyzedCanvas = null;
   var lastOcrDebug = '';
   var OCR_TIMEOUT_MS = 45000;
   // Originally capped at 900px on the assumption recognize() would be too
@@ -743,7 +757,11 @@
       if (g < lo) lo = g;
       if (g > hi) hi = g;
     }
-    var range = hi - lo || 1;
+    // A near-flat image (little real tonal variation) would otherwise get
+    // divided by a tiny range and blown out to noise-amplified black/white
+    // speckle - floor it so a low-contrast photo just stays low-contrast
+    // instead of being destroyed.
+    var range = Math.max(hi - lo, 30);
     for (var i2 = 0, j2 = 0; i2 < d.length; i2 += 4, j2++) {
       var v = ((gray[j2] - lo) * 255 / range) | 0;
       d[i2] = d[i2 + 1] = d[i2 + 2] = v;
@@ -781,6 +799,7 @@
   function attemptOcrFallback(canvas, onProgress) {
     var report = onProgress || function (m) { scanDebug.textContent = 'ocr: ' + formatOcrProgress(m); };
     var ocrCanvas = preprocessForOcr(downscaleForOcr(canvas));
+    lastOcrAnalyzedCanvas = ocrCanvas;
     var ocrPromise = getOcrWorker(report).then(function (worker) {
       return worker.recognize(ocrCanvas);
     }, function (err) {
@@ -948,8 +967,17 @@
     recoveryDebug.textContent = 'Barcode read: ' + barcode + ' — not in product database';
   }
 
+  // Shows what OCR actually analyzed (post-crop, post-preprocess) when
+  // available, rather than the full uncropped photo - a user screenshot
+  // showed this preview was previously both distorted (see makeThumbnail)
+  // and misleading (it never reflected the cropped region OCR was really
+  // working from), making failures impossible to visually diagnose.
   function renderRecoveryPhoto() {
-    recoveryPhoto.style.backgroundImage = capturedPhotoDataUrl ? 'url(' + capturedPhotoDataUrl + ')' : 'none';
+    var debugImg = lastOcrAnalyzedCanvas
+      ? makeThumbnail(lastOcrAnalyzedCanvas, lastOcrAnalyzedCanvas.width, lastOcrAnalyzedCanvas.height)
+      : null;
+    var img = debugImg || capturedPhotoDataUrl;
+    recoveryPhoto.style.backgroundImage = img ? 'url(' + img + ')' : 'none';
   }
 
   // ---- Recovery menu ----
