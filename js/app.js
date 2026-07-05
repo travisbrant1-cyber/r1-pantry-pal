@@ -17,10 +17,11 @@
   var browseView = document.getElementById('browseView');
   var detailView = document.getElementById('detailView');
   var diagView = document.getElementById('diagView');
+  var barcodeView = document.getElementById('barcodeView');
   var VIEWS = {
     home: homeView, scan: scanView, lookup: lookupView, itemCard: itemCardView,
     recovery: recoveryView, status: statusView, manual: manualView,
-    browse: browseView, detail: detailView, diag: diagView
+    browse: browseView, detail: detailView, diag: diagView, barcode: barcodeView
   };
 
   var camPreview = document.getElementById('camPreview');
@@ -50,6 +51,9 @@
   var manualQtyValue = document.getElementById('manualQtyValue');
   var manualSaveBtn = document.getElementById('manualSaveBtn');
 
+  var barcodeInput = document.getElementById('barcodeInput');
+  var barcodeSaveBtn = document.getElementById('barcodeSaveBtn');
+
   var inventoryList = document.getElementById('inventoryList');
   var browseEmptyHint = document.getElementById('browseEmptyHint');
 
@@ -74,7 +78,7 @@
   var capturedPhotoDataUrl = null;
 
   var recoveryIndex = 0;
-  var RECOVERY_ACTIONS = ['vision', 'voice', 'manual'];
+  var RECOVERY_ACTIONS = ['vision', 'voice', 'barcode', 'manual'];
 
   var browseIndex = 0;
   var detailQty = 0;
@@ -620,6 +624,20 @@
     return null;
   }
 
+  // Even when nothing passes the checksum, the top-priority (largest-font)
+  // row is still the most likely candidate for the actual barcode digits -
+  // surfacing that raw, unvalidated guess lets a human quickly correct one
+  // or two wrong digits instead of typing a whole UPC from scratch.
+  function bestDigitGuessFromWords(words) {
+    var rows = clusterWordsIntoRows(words);
+    for (var i = 0; i < rows.length; i++) {
+      var digits = rows[i].words.map(function (w) { return w.text; }).join('').replace(/[^0-9]/g, '');
+      if (digits.length >= 6) return digits;
+    }
+    return '';
+  }
+
+  var lastOcrDigitGuess = '';
   var lastOcrDebug = '';
   var OCR_TIMEOUT_MS = 45000;
   // Originally capped at 900px on the assumption recognize() would be too
@@ -678,6 +696,7 @@
       throw err;
     }).then(function (result) {
       var words = (result && result.data && result.data.words) || [];
+      lastOcrDigitGuess = bestDigitGuessFromWords(words);
       var code = extractValidBarcodeFromOcrWords(words);
       if (!code) {
         var text = (result && result.data && result.data.text) || '';
@@ -858,6 +877,7 @@
     var action = RECOVERY_ACTIONS[recoveryIndex];
     if (action === 'vision') attemptVisionAI();
     else if (action === 'voice') attemptVoiceEntry();
+    else if (action === 'barcode') enterBarcodeEntry();
     else if (action === 'manual') enterManual(false);
   }
 
@@ -1005,6 +1025,28 @@
     manualQtyNum = manualQtyFraction ? stepFraction(manualQtyNum, delta) : stepWhole(manualQtyNum, delta);
     renderManualQty();
   }
+
+  // ---- Barcode entry/correction ----
+  // OCR reading the bars themselves was already dropped as unreliable on
+  // this camera; digit OCR occasionally still can't recover a checksum-
+  // valid code either. Rather than force a full retype, this pre-fills
+  // whatever raw (unvalidated) digits OCR's best-guess row contained, so
+  // fixing one or two wrong characters is enough - `inputmode="numeric"`
+  // on the input gets a real 10-key pad on the device instead of the full
+  // keyboard used for text fields.
+  function enterBarcodeEntry() {
+    barcodeInput.value = lastOcrDigitGuess || '';
+    showView('barcode');
+    setTimeout(function () { barcodeInput.focus(); }, 50);
+  }
+
+  function saveBarcodeEntry() {
+    var digits = barcodeInput.value.replace(/[^0-9]/g, '');
+    if (!digits) { barcodeInput.focus(); return; }
+    onBarcodeReady(digits);
+  }
+
+  barcodeSaveBtn.addEventListener('click', saveBarcodeEntry);
 
   // ---- Item card (new confirm / existing quantity adjust) ----
   var itemQtyNum = 1;
@@ -1188,6 +1230,7 @@
     else if (currentView === 'itemCard') saveItemCard();
     else if (currentView === 'manual') saveManual();
     else if (currentView === 'browse') openDetail();
+    else if (currentView === 'barcode') saveBarcodeEntry();
   });
 
   window.addEventListener('longPressStart', function () {
@@ -1205,6 +1248,7 @@
     else if (currentView === 'browse') { showView('home'); }
     else if (currentView === 'detail') { showView('browse'); }
     else if (currentView === 'diag') { showView('home'); }
+    else if (currentView === 'barcode') { showView('recovery'); }
   });
 
   // ---- Init ----
