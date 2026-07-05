@@ -6,6 +6,7 @@
 
   // ---- Elements ----
   var statusDot = document.getElementById('statusDot');
+  var savedToast = document.getElementById('savedToast');
 
   var homeView = document.getElementById('homeView');
   var scanView = document.getElementById('scanView');
@@ -1100,9 +1101,12 @@
     });
   }
 
+  var savedToastTimer = null;
+
   function flashSaved() {
-    statusDot.style.transform = 'scale(1.4)';
-    setTimeout(function () { statusDot.style.transform = 'scale(1)'; }, 150);
+    clearTimeout(savedToastTimer);
+    savedToast.classList.add('show');
+    savedToastTimer = setTimeout(function () { savedToast.classList.remove('show'); }, 1300);
   }
 
   // ---- Browse ----
