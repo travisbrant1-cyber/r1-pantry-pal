@@ -559,7 +559,7 @@
   // "words" are digit groups - the printed line is often grouped with
   // spaces (e.g. "0 12345 67890 5"), so try concatenating a few adjacent
   // groups too, not just each group alone.
-  function extractValidBarcodeFromOcrText(text) {
+  function extractValidBarcodeFromLineText(text) {
     var tokens = text.split(/[^0-9]+/).filter(function (t) { return t.length > 0; });
     var maxSpan = 4;
     for (var i = 0; i < tokens.length; i++) {
@@ -568,6 +568,20 @@
         combined += tokens[j];
         if (isValidGTIN(combined)) return combined;
       }
+    }
+    return null;
+  }
+
+  // A real-world capture usually has other printed numbers on the package
+  // (lot codes, item numbers) besides the actual barcode's digit line -
+  // concatenating tokens across the *whole* recognized text merges digits
+  // from unrelated lines into one bogus string. Tesseract reports text
+  // per physical line (with its own bounding box), so extraction is scoped
+  // to one line at a time instead.
+  function extractValidBarcodeFromOcrLines(lines) {
+    for (var i = 0; i < lines.length; i++) {
+      var code = extractValidBarcodeFromLineText(lines[i].text || '');
+      if (code) return code;
     }
     return null;
   }
@@ -625,9 +639,10 @@
       lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
       throw err;
     }).then(function (result) {
-      var text = (result && result.data && result.data.text) || '';
-      var code = extractValidBarcodeFromOcrText(text);
+      var lines = (result && result.data && result.data.lines) || [];
+      var code = extractValidBarcodeFromOcrLines(lines);
       if (!code) {
+        var text = (result && result.data && result.data.text) || '';
         var flat = text.replace(/\s+/g, ' ').trim();
         lastOcrDebug = 'ocr read "' + flat.slice(0, 30) + '" no valid code';
         throw new Error('no valid barcode found in OCR text');
