@@ -532,6 +532,11 @@
         logger: function (m) { if (currentOcrProgressHandler) currentOcrProgressHandler(m); }
       });
     }).then(function (worker) {
+      // Tried switching page segmentation mode to SPARSE_TEXT ('11') on
+      // the theory that scattered product-label text suits it better than
+      // the default whole-page assumption - measured regression instead:
+      // it dropped an isolated leading digit that the default PSM read
+      // correctly every time in an A/B test. Left at Tesseract's default.
       return worker.setParameters({ tessedit_char_whitelist: '0123456789' }).then(function () { return worker; });
     });
     return ocrWorkerPromise;
@@ -674,6 +679,38 @@
     return c;
   }
 
+  // A raw camera photo has real-world lighting variance (shadows, glare,
+  // dim indoor light, a colored label background) that a printed page
+  // scan never does - Tesseract's own internal binarization assumes
+  // reasonably clean, high-contrast input, and reports of "inconsistent"
+  // OCR on real photos (even from a good phone camera, not just the R1)
+  // pointed at this rather than pure resolution. Converting to grayscale
+  // and stretching contrast so the darkest/lightest pixels actually hit
+  // black/white gives Tesseract's binarizer a much cleaner starting point.
+  function preprocessForOcr(canvas) {
+    var c = document.createElement('canvas');
+    c.width = canvas.width; c.height = canvas.height;
+    var ctx = c.getContext('2d');
+    ctx.drawImage(canvas, 0, 0);
+    var img = ctx.getImageData(0, 0, c.width, c.height);
+    var d = img.data;
+    var lo = 255, hi = 0;
+    var gray = new Uint8ClampedArray(d.length / 4);
+    for (var i = 0, j = 0; i < d.length; i += 4, j++) {
+      var g = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+      gray[j] = g;
+      if (g < lo) lo = g;
+      if (g > hi) hi = g;
+    }
+    var range = hi - lo || 1;
+    for (var i2 = 0, j2 = 0; i2 < d.length; i2 += 4, j2++) {
+      var v = ((gray[j2] - lo) * 255 / range) | 0;
+      d[i2] = d[i2 + 1] = d[i2 + 2] = v;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
   // Tesseract's worker/WASM setup is the one part of this pipeline that
   // isn't guaranteed to cleanly resolve or reject in every WebView - if it
   // hangs instead, the UI must not go silent forever, so this always
@@ -702,7 +739,7 @@
 
   function attemptOcrFallback(canvas, onProgress) {
     var report = onProgress || function (m) { scanDebug.textContent = 'ocr: ' + formatOcrProgress(m); };
-    var ocrCanvas = downscaleForOcr(canvas);
+    var ocrCanvas = preprocessForOcr(downscaleForOcr(canvas));
     var ocrPromise = getOcrWorker(report).then(function (worker) {
       return worker.recognize(ocrCanvas);
     }, function (err) {
@@ -749,7 +786,7 @@
   }
 
   function attemptProductNameOcr(canvas, onProgress) {
-    var ocrCanvas = downscaleForOcr(canvas);
+    var ocrCanvas = preprocessForOcr(downscaleForOcr(canvas));
     var namePromise = getOcrWorker(onProgress).then(function (worker) {
       return worker.setParameters({ tessedit_char_whitelist: '' })
         .then(function () { return worker.recognize(ocrCanvas); })
