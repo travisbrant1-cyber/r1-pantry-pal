@@ -287,6 +287,33 @@
     });
   }
 
+  // Diagnostics test 4 only proves the worker/wasm/language-data *init* is
+  // fast - it never calls recognize(). The real OCR fallback runs recognize()
+  // against the camera's full native resolution (e.g. 1080x1920, ~2MP),
+  // which is a lot of pixels for a non-SIMD WASM OCR engine on a
+  // resource-constrained device CPU - this measures how long recognize()
+  // itself actually takes on a same-size synthetic image, to tell "hanging"
+  // apart from "just slower than the timeout allows."
+  function runDiagOcrRecognizeTest(index) {
+    var label = 'Tesseract recognize (2MP)';
+    setDiagLine(index, label + ': running…');
+    var c = document.createElement('canvas');
+    c.width = 1080; c.height = 1920;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#000'; ctx.font = '120px sans-serif';
+    ctx.fillText('012345678905', 40, 1000);
+    var start = Date.now();
+    var testPromise = getOcrWorker(function (m) {
+      setDiagLine(index, label + ': ' + formatOcrProgress(m));
+    }).then(function (worker) { return worker.recognize(c); });
+    return diagWithTimeout(testPromise, 60000).then(function () {
+      setDiagLine(index, label + ': ok, ' + (Date.now() - start) + 'ms');
+    }, function (err) {
+      setDiagLine(index, label + ': FAIL after ' + (Date.now() - start) + 'ms - ' + ((err && err.message) || err));
+    });
+  }
+
   function enterDiag() {
     showView('diag');
     diagLines = [];
@@ -294,7 +321,8 @@
     runDiagTest(0, 'Worker (basic)', testWorkerBasic)
       .then(function () { return runDiagTest(1, 'WebAssembly (main thread)', testWasmBasic); })
       .then(function () { return runDiagTest(2, 'WebAssembly (inside Worker)', testWasmInWorker); })
-      .then(function () { return runDiagOcrTest(3); });
+      .then(function () { return runDiagOcrTest(3); })
+      .then(function () { return runDiagOcrRecognizeTest(4); });
   }
 
   // ---- Camera / scanning ----
@@ -478,11 +506,18 @@
     return tesseractScriptPromise;
   }
 
-  // Tesseract reports its own init stages (fetching/instantiating the wasm
-  // core, fetching/decompressing the language data, initializing the API)
-  // via this logger - surfacing it is what tells us WHERE an init hangs,
-  // instead of just that it eventually times out.
+  // Tesseract reports its own stages (fetching/instantiating the wasm core,
+  // fetching/decompressing the language data, initializing the API,
+  // recognizing) via this logger - surfacing it is what tells us WHERE a
+  // hang actually is. The logger is only ever wired up once, at worker
+  // creation, but different callers (a real scan vs. the Diagnostics
+  // screen) want their own progress target - so route through a mutable
+  // "whoever's listening right now" handler rather than baking in whichever
+  // caller happened to create the worker first.
+  var currentOcrProgressHandler = null;
+
   function getOcrWorker(onProgress) {
+    if (onProgress) currentOcrProgressHandler = onProgress;
     if (ocrWorkerPromise) return ocrWorkerPromise;
     ocrWorkerPromise = loadTesseractScript().then(function () {
       return window.Tesseract.createWorker('eng', 1, {
@@ -490,7 +525,7 @@
         corePath: absoluteUrl(TESSERACT_BASE + 'tesseract-core-lstm.wasm.js'),
         langPath: absoluteUrl(TESSERACT_BASE),
         gzip: true,
-        logger: function (m) { if (onProgress) onProgress(m); }
+        logger: function (m) { if (currentOcrProgressHandler) currentOcrProgressHandler(m); }
       });
     }).then(function (worker) {
       return worker.setParameters({ tessedit_char_whitelist: '0123456789' }).then(function () { return worker; });
@@ -538,7 +573,23 @@
   }
 
   var lastOcrDebug = '';
-  var OCR_TIMEOUT_MS = 20000;
+  var OCR_TIMEOUT_MS = 45000;
+  var OCR_MAX_DIMENSION = 900;
+
+  // Recognizing at the camera's full native resolution (e.g. 1080x1920,
+  // ~2MP) is a lot of pixels for a non-SIMD WASM OCR engine on a
+  // resource-constrained device CPU - the printed digit line doesn't need
+  // that much detail, so downscaling first makes recognize() meaningfully
+  // faster without giving up legibility.
+  function downscaleForOcr(canvas) {
+    var scale = Math.min(1, OCR_MAX_DIMENSION / Math.max(canvas.width, canvas.height));
+    if (scale >= 1) return canvas;
+    var c = document.createElement('canvas');
+    c.width = Math.round(canvas.width * scale);
+    c.height = Math.round(canvas.height * scale);
+    c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+    return c;
+  }
 
   // Tesseract's worker/WASM setup is the one part of this pipeline that
   // isn't guaranteed to cleanly resolve or reject in every WebView - if it
@@ -567,8 +618,9 @@
   }
 
   function attemptOcrFallback(canvas) {
+    var ocrCanvas = downscaleForOcr(canvas);
     var ocrPromise = getOcrWorker(function (m) { scanDebug.textContent = 'ocr: ' + formatOcrProgress(m); }).then(function (worker) {
-      return worker.recognize(canvas);
+      return worker.recognize(ocrCanvas);
     }, function (err) {
       lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
       throw err;
