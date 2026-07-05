@@ -180,7 +180,15 @@
       showCamFallback();
       return;
     }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        advanced: [{ focusMode: 'continuous' }]
+      },
+      audio: false
+    })
       .then(function (stream) {
         camPreview.srcObject = stream;
         camPreview.classList.add('active');
@@ -222,15 +230,28 @@
     else scanStatus.textContent = 'Starting camera…';
   }
 
+  // Barcode decoding needs the camera's native resolution - a barcode's fine
+  // bar spacing is destroyed by downsampling to a small fixed size. A
+  // separate small thumbnail (for the item photo shown in the UI) is cropped
+  // from the same full-resolution frame afterwards.
+  function makeThumbnail(source, sw, sh) {
+    var t = document.createElement('canvas');
+    t.width = 160; t.height = 120;
+    t.getContext('2d').drawImage(source, 0, 0, sw, sh, 0, 0, t.width, t.height);
+    return t.toDataURL('image/jpeg', 0.6);
+  }
+
   function attemptCapture() {
     if (cameraUnavailable) { fileInput.click(); return; }
     if (!videoActive) { scanStatus.textContent = 'Camera still starting…'; return; }
 
+    var vw = camPreview.videoWidth || 640;
+    var vh = camPreview.videoHeight || 480;
     var c = document.createElement('canvas');
-    c.width = 160; c.height = 120;
+    c.width = vw; c.height = vh;
     var ctx = c.getContext('2d');
-    ctx.drawImage(camPreview, 0, 0, c.width, c.height);
-    capturedPhotoDataUrl = c.toDataURL('image/jpeg', 0.6);
+    ctx.drawImage(camPreview, 0, 0, vw, vh);
+    capturedPhotoDataUrl = makeThumbnail(c, vw, vh);
 
     scanStatus.textContent = 'Reading…';
     decodeFromCanvas(c)
@@ -263,10 +284,10 @@
     var img = new Image();
     img.onload = function () {
       var c = document.createElement('canvas');
-      c.width = 160; c.height = 120;
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
       var ctx = c.getContext('2d');
       ctx.drawImage(img, 0, 0, c.width, c.height);
-      capturedPhotoDataUrl = c.toDataURL('image/jpeg', 0.6);
+      capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
 
       decodeFromCanvas(c)
         .then(function (barcode) { onBarcodeReady(barcode); })
