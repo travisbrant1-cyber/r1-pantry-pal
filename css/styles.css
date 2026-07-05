@@ -154,6 +154,13 @@ main {
     flex-shrink: 0;
 }
 
+.scan-debug {
+    text-align: center;
+    font-size: 9px;
+    color: #55663f;
+    flex-shrink: 0;
+}
+
 .status-center {
     flex: 1;
     display: flex;

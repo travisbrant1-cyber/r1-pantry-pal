@@ -26,6 +26,7 @@
   var camFallback = document.getElementById('camFallback');
   var fileInput = document.getElementById('fileInput');
   var scanStatus = document.getElementById('scanStatus');
+  var scanDebug = document.getElementById('scanDebug');
 
   var itemHeading = document.getElementById('itemHeading');
   var itemPhoto = document.getElementById('itemPhoto');
@@ -197,6 +198,9 @@
         cameraUnavailable = false;
         statusDot.classList.add('live');
         if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
+        camPreview.addEventListener('loadedmetadata', function () {
+          scanDebug.textContent = 'cam ' + camPreview.videoWidth + 'x' + camPreview.videoHeight;
+        }, { once: true });
       })
       .catch(function () {
         showCamFallback();
@@ -261,6 +265,7 @@
   function tryDecodeBurst(attemptsLeft) {
     var c = grabFrame();
     if (!capturedPhotoDataUrl) capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
+    scanDebug.textContent = 'cam ' + c.width + 'x' + c.height + ' · attempt ' + (CAPTURE_ATTEMPTS - attemptsLeft + 1) + '/' + CAPTURE_ATTEMPTS;
     return decodeFromCanvas(c).catch(function (err) {
       if (attemptsLeft <= 1) throw err;
       return new Promise(function (resolve, reject) {
