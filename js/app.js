@@ -557,13 +557,16 @@
 
   var lastOcrDebug = '';
   var OCR_TIMEOUT_MS = 45000;
-  var OCR_MAX_DIMENSION = 900;
+  // Originally capped at 900px on the assumption recognize() would be too
+  // slow at full native resolution - real-device testing showed recognize()
+  // only takes ~4s even at ~2MP, well within budget, so this is now just a
+  // safety ceiling for unusually high camera resolutions, not an active
+  // downscale. Small print (e.g. a gum box's barcode) needs all the
+  // resolution it can get, since the required ~1-2ft scan distance already
+  // makes it tiny in the frame - don't lower this without solid evidence
+  // recognize() is actually too slow on real hardware.
+  var OCR_MAX_DIMENSION = 2000;
 
-  // Recognizing at the camera's full native resolution (e.g. 1080x1920,
-  // ~2MP) is a lot of pixels for a non-SIMD WASM OCR engine on a
-  // resource-constrained device CPU - the printed digit line doesn't need
-  // that much detail, so downscaling first makes recognize() meaningfully
-  // faster without giving up legibility.
   function downscaleForOcr(canvas) {
     var scale = Math.min(1, OCR_MAX_DIMENSION / Math.max(canvas.width, canvas.height));
     if (scale >= 1) return canvas;
