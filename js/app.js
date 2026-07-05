@@ -343,7 +343,7 @@
         facingMode: 'environment',
         width: { ideal: 1920 },
         height: { ideal: 1080 },
-        advanced: [{ focusMode: 'continuous' }, { zoom: 2 }]
+        advanced: [{ focusMode: 'continuous' }]
       },
       audio: false
     })
