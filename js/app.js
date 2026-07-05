@@ -405,6 +405,40 @@
     return c;
   }
 
+  // A real captured frame confirmed the actual problem behind "OCR barely
+  // reads anything" (not garbled digits, just near-empty output): the
+  // barcode was only a small strip within a much larger photo of the
+  // whole package, so it had little effective resolution relative to the
+  // full frame - true regardless of device/camera quality. The on-screen
+  // viewfinder line was purely decorative up to now (an aiming hint with
+  // no actual effect on capture) - this crops the captured frame to a band
+  // around it before barcode OCR, so whatever the user aimed at the line
+  // fills much more of what actually gets analyzed. Uses camPreview's own
+  // live layout size (not a hardcoded constant) to replicate the same
+  // object-fit:cover crop the visible preview already does, so the region
+  // analyzed matches what was actually visible on screen.
+  function cropToViewfinderBand(canvas) {
+    var containerW = camPreview.offsetWidth || canvas.width;
+    var containerH = camPreview.offsetHeight || canvas.height;
+    var scale = Math.max(containerW / canvas.width, containerH / canvas.height);
+    var visibleW = containerW / scale;
+    var visibleH = containerH / scale;
+    var offsetX = (canvas.width - visibleW) / 2;
+    var offsetY = (canvas.height - visibleH) / 2;
+
+    var bandHeightFrac = 0.34;
+    var cropX = offsetX + visibleW * 0.08;
+    var cropW = visibleW * 0.84;
+    var cropY = offsetY + visibleH * (0.5 - bandHeightFrac / 2);
+    var cropH = visibleH * bandHeightFrac;
+
+    var out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(cropW));
+    out.height = Math.max(1, Math.round(cropH));
+    out.getContext('2d').drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, out.width, out.height);
+    return out;
+  }
+
   // The physical PTT click jostles the device right as the frame is
   // grabbed, so a lone snapshot straight off the click is often
   // motion-blurred - a short settle delay gives that a moment to pass
@@ -434,11 +468,18 @@
       statusHint.textContent = 'Hold PTT to cancel';
       showView('status');
 
-      identifyFromCanvas(c, function (m) {
+      var reportProgress = function (m) {
         var line = formatOcrProgress(m);
         statusHint.textContent = line || 'Hold PTT to cancel';
         scanDebug.textContent = 'ocr: ' + line;
-      })
+      };
+
+      // Try the viewfinder-cropped band first (usually a much easier read
+      // if aimed well), but fall back to the full frame if that misses -
+      // aiming isn't always perfect, and this way cropping can only help,
+      // never make a previously-working scan fail.
+      identifyFromCanvas(cropToViewfinderBand(c), reportProgress)
+        .catch(function () { return identifyFromCanvas(c, reportProgress); })
         .then(function (barcode) {
           if (currentView !== 'status') return;
           onBarcodeReady(barcode);
