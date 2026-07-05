@@ -27,6 +27,7 @@
 
   var camPreview = document.getElementById('camPreview');
   var camFallback = document.getElementById('camFallback');
+  var viewfinderLine = document.getElementById('viewfinderLine');
   var fileInput = document.getElementById('fileInput');
   var scanStatus = document.getElementById('scanStatus');
   var scanDebug = document.getElementById('scanDebug');
@@ -153,6 +154,7 @@
     Object.keys(VIEWS).forEach(function (key) {
       VIEWS[key].classList.toggle('active', key === name);
     });
+    if (name === 'scan') startFocusLoop(); else stopFocusLoop();
   }
 
   // ---- Home menu ----
@@ -449,6 +451,70 @@
     out.height = Math.max(1, Math.round(cropH));
     out.getContext('2d').drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, out.width, out.height);
     return out;
+  }
+
+  // ---- Live focus/framing indicator ----
+  // A real product was correctly identified, but only at one specific
+  // distance found by trial and error - each attempt costs a several-
+  // second OCR round trip, so blind guess-and-check is slow. This gives
+  // continuous feedback on the *live* video, before capture, by scoring
+  // edge/detail energy in the same region cropToViewfinderBand() will
+  // actually analyze - a small, blurry, or poorly-framed barcode has much
+  // less fine detail than a sharp, well-filled one. Colors the viewfinder
+  // line red-to-green using a running best-seen-this-session score as the
+  // reference, rather than a hardcoded absolute threshold (which nobody
+  // could calibrate without real hardware in hand) - so it behaves like a
+  // "hot/cold" indicator: green means "as good as it's gotten so far",
+  // not "definitely readable."
+  function computeSharpnessScore(imageData) {
+    var d = imageData.data, w = imageData.width, h = imageData.height;
+    var gray = new Float32Array(w * h);
+    for (var i = 0, p = 0; i < d.length; i += 4, p++) {
+      gray[p] = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+    }
+    var sum = 0;
+    for (var y = 1; y < h; y++) {
+      for (var x = 1; x < w; x++) {
+        var idx = y * w + x;
+        sum += Math.abs(gray[idx] - gray[idx - 1]) + Math.abs(gray[idx] - gray[idx - w]);
+      }
+    }
+    return sum / (w * h);
+  }
+
+  function measureLiveFocusScore() {
+    var vw = camPreview.videoWidth, vh = camPreview.videoHeight;
+    if (!vw || !vh) return null;
+    var smallW = 200;
+    var small = document.createElement('canvas');
+    small.width = smallW;
+    small.height = Math.max(1, Math.round(smallW * vh / vw));
+    small.getContext('2d').drawImage(camPreview, 0, 0, small.width, small.height);
+    var band = cropToViewfinderBand(small);
+    var ctx = band.getContext('2d');
+    return computeSharpnessScore(ctx.getImageData(0, 0, band.width, band.height));
+  }
+
+  var FOCUS_CHECK_MS = 250;
+  var focusLoopHandle = null;
+  var bestFocusScoreSeen = 0;
+
+  function startFocusLoop() {
+    stopFocusLoop();
+    bestFocusScoreSeen = 0;
+    focusLoopHandle = setInterval(function () {
+      if (currentView !== 'scan' || !videoActive) return;
+      var score = measureLiveFocusScore();
+      if (score === null) return;
+      if (score > bestFocusScoreSeen) bestFocusScoreSeen = score;
+      var ratio = bestFocusScoreSeen > 0 ? Math.min(1, score / bestFocusScoreSeen) : 0;
+      viewfinderLine.style.background = 'hsl(' + Math.round(ratio * 120) + ', 75%, 50%)';
+    }, FOCUS_CHECK_MS);
+  }
+
+  function stopFocusLoop() {
+    clearInterval(focusLoopHandle);
+    focusLoopHandle = null;
   }
 
   // The physical PTT click jostles the device right as the frame is
