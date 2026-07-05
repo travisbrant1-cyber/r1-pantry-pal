@@ -399,9 +399,36 @@
   }
 
   var lastOcrDebug = '';
+  var OCR_TIMEOUT_MS = 20000;
+
+  // Tesseract's worker/WASM setup is the one part of this pipeline that
+  // isn't guaranteed to cleanly resolve or reject in every WebView - if it
+  // hangs instead, the UI must not go silent forever, so this always
+  // produces a visible outcome one way or another within OCR_TIMEOUT_MS.
+  function withTimeout(promise, ms, label) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error(label + ' timed out after ' + Math.round(ms / 1000) + 's'));
+      }, ms);
+      promise.then(function (v) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(v);
+      }, function (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
 
   function attemptOcrFallback(canvas) {
-    return getOcrWorker().then(function (worker) {
+    var ocrPromise = getOcrWorker().then(function (worker) {
       return worker.recognize(canvas);
     }, function (err) {
       lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
@@ -415,6 +442,10 @@
         throw new Error('no valid barcode found in OCR text');
       }
       return code;
+    });
+    return withTimeout(ocrPromise, OCR_TIMEOUT_MS, 'ocr').catch(function (err) {
+      if (/timed out/.test(err.message)) lastOcrDebug = err.message;
+      throw err;
     });
   }
 
