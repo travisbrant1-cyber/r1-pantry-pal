@@ -66,7 +66,6 @@
   var inventory = [];
   var videoActive = false;
   var cameraUnavailable = false;
-  var codeReader = null;
 
   var pendingItem = null;   // item being built/edited
   var itemCardMode = 'new'; // 'new' | 'existing'
@@ -372,18 +371,6 @@
     if (currentView === 'scan') scanStatus.textContent = 'Tap the frame to choose a photo';
   }
 
-  function getZXingHints() {
-    var hints = new Map();
-    hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-      window.ZXing.BarcodeFormat.EAN_13,
-      window.ZXing.BarcodeFormat.EAN_8,
-      window.ZXing.BarcodeFormat.UPC_A,
-      window.ZXing.BarcodeFormat.UPC_E,
-      window.ZXing.BarcodeFormat.CODE_128
-    ]);
-    return hints;
-  }
-
   function enterScan() {
     showView('scan');
     if (videoActive) scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
@@ -411,67 +398,48 @@
     return c;
   }
 
-  // The physical PTT click jostles the device right as a single frame would
-  // be grabbed, so a lone snapshot is often motion-blurred - a settle delay
-  // plus a short burst of frames (trying each until one decodes) gives a
-  // steadier frame a chance without the user having to hold perfectly still.
+  // The physical PTT click jostles the device right as the frame is
+  // grabbed, so a lone snapshot straight off the click is often
+  // motion-blurred - a short settle delay gives that a moment to pass
+  // before the still is captured.
   var CAPTURE_SETTLE_MS = 300;
-  var CAPTURE_ATTEMPTS = 3;
-  var CAPTURE_RETRY_MS = 150;
 
-  var lastFrameCanvas = null;
-
-  function tryDecodeBurst(attemptsLeft) {
-    var c = grabFrame();
-    lastFrameCanvas = c;
-    if (!capturedPhotoDataUrl) capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
-    scanDebug.textContent = 'cam ' + c.width + 'x' + c.height + ' · attempt ' + (CAPTURE_ATTEMPTS - attemptsLeft + 1) + '/' + CAPTURE_ATTEMPTS;
-    return decodeFromCanvas(c).catch(function (err) {
-      if (attemptsLeft <= 1) throw err;
-      return new Promise(function (resolve, reject) {
-        setTimeout(function () {
-          tryDecodeBurst(attemptsLeft - 1).then(resolve, reject);
-        }, CAPTURE_RETRY_MS);
-      });
-    });
-  }
-
+  // Bar decoding needs far more resolution per barcode module than this
+  // camera's fixed focus can reliably deliver, even at the correct
+  // distance (see HANDOFF.md) - real-hardware testing kept failing to read
+  // bars at all, so scanning goes straight to the printed digit line
+  // instead of spending time on bar-decode attempts first.
   function attemptCapture() {
     if (cameraUnavailable) { fileInput.click(); return; }
     if (!videoActive) { scanStatus.textContent = 'Camera still starting…'; return; }
 
-    capturedPhotoDataUrl = null;
     scanStatus.textContent = 'Hold steady…';
     setTimeout(function () {
-      scanStatus.textContent = 'Reading…';
-      tryDecodeBurst(CAPTURE_ATTEMPTS)
-        .then(function (barcode) { onBarcodeReady(barcode); })
+      var c = grabFrame();
+      capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
+
+      // Leave the live camera view as soon as the still is captured - OCR
+      // takes a few seconds, and staying on the live feed makes it look
+      // like the device still needs to be held steady when the frame is
+      // already locked in.
+      statusText.textContent = 'Reading barcode…';
+      statusHint.textContent = 'Hold PTT to cancel';
+      showView('status');
+
+      attemptOcrFallback(c, function (m) {
+        var line = formatOcrProgress(m);
+        statusHint.textContent = line || 'Hold PTT to cancel';
+        scanDebug.textContent = 'ocr: ' + line;
+      })
+        .then(function (barcode) {
+          if (currentView !== 'status') return;
+          onBarcodeReady(barcode);
+        })
         .catch(function () {
-          scanStatus.textContent = 'Bars unclear, trying digits…';
-          attemptOcrFallback(lastFrameCanvas)
-            .then(function (barcode) { onBarcodeReady(barcode); })
-            .catch(function () {
-              scanStatus.textContent = 'No barcode found — try again';
-              scanDebug.textContent = lastOcrDebug;
-              setTimeout(function () {
-                if (currentView === 'scan') scanStatus.textContent = 'Hold ~1-2ft back, click PTT';
-              }, 1400);
-            });
+          if (currentView !== 'status') return;
+          onBarcodeReady(null);
         });
     }, CAPTURE_SETTLE_MS);
-  }
-
-  function decodeFromCanvas(canvas) {
-    return new Promise(function (resolve, reject) {
-      var img = new Image();
-      img.onload = function () {
-        if (!codeReader) codeReader = new window.ZXing.BrowserMultiFormatReader(getZXingHints());
-        codeReader.decodeFromImageElement(img)
-          .then(function (result) { resolve(result.getText()); })
-          .catch(function (err) { reject(err); });
-      };
-      img.src = canvas.toDataURL('image/png');
-    });
   }
 
   // ---- OCR fallback: read the printed digit line under the bars ----
@@ -631,9 +599,10 @@
     });
   }
 
-  function attemptOcrFallback(canvas) {
+  function attemptOcrFallback(canvas, onProgress) {
+    var report = onProgress || function (m) { scanDebug.textContent = 'ocr: ' + formatOcrProgress(m); };
     var ocrCanvas = downscaleForOcr(canvas);
-    var ocrPromise = getOcrWorker(function (m) { scanDebug.textContent = 'ocr: ' + formatOcrProgress(m); }).then(function (worker) {
+    var ocrPromise = getOcrWorker(report).then(function (worker) {
       return worker.recognize(ocrCanvas);
     }, function (err) {
       lastOcrDebug = 'ocr load failed: ' + ((err && err.message) || err);
@@ -667,13 +636,9 @@
       ctx.drawImage(img, 0, 0, c.width, c.height);
       capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
 
-      decodeFromCanvas(c)
+      attemptOcrFallback(c)
         .then(function (barcode) { onBarcodeReady(barcode); })
-        .catch(function () {
-          attemptOcrFallback(c)
-            .then(function (barcode) { onBarcodeReady(barcode); })
-            .catch(function () { onBarcodeReady(null); });
-        });
+        .catch(function () { onBarcodeReady(null); });
 
       URL.revokeObjectURL(img.src);
     };
