@@ -241,27 +241,53 @@
     return t.toDataURL('image/jpeg', 0.6);
   }
 
-  function attemptCapture() {
-    if (cameraUnavailable) { fileInput.click(); return; }
-    if (!videoActive) { scanStatus.textContent = 'Camera still starting…'; return; }
-
+  function grabFrame() {
     var vw = camPreview.videoWidth || 640;
     var vh = camPreview.videoHeight || 480;
     var c = document.createElement('canvas');
     c.width = vw; c.height = vh;
-    var ctx = c.getContext('2d');
-    ctx.drawImage(camPreview, 0, 0, vw, vh);
-    capturedPhotoDataUrl = makeThumbnail(c, vw, vh);
+    c.getContext('2d').drawImage(camPreview, 0, 0, vw, vh);
+    return c;
+  }
 
-    scanStatus.textContent = 'Reading…';
-    decodeFromCanvas(c)
-      .then(function (barcode) { onBarcodeReady(barcode); })
-      .catch(function () {
-        scanStatus.textContent = 'No barcode found — try again';
+  // The physical PTT click jostles the device right as a single frame would
+  // be grabbed, so a lone snapshot is often motion-blurred - a settle delay
+  // plus a short burst of frames (trying each until one decodes) gives a
+  // steadier frame a chance without the user having to hold perfectly still.
+  var CAPTURE_SETTLE_MS = 300;
+  var CAPTURE_ATTEMPTS = 3;
+  var CAPTURE_RETRY_MS = 150;
+
+  function tryDecodeBurst(attemptsLeft) {
+    var c = grabFrame();
+    if (!capturedPhotoDataUrl) capturedPhotoDataUrl = makeThumbnail(c, c.width, c.height);
+    return decodeFromCanvas(c).catch(function (err) {
+      if (attemptsLeft <= 1) throw err;
+      return new Promise(function (resolve, reject) {
         setTimeout(function () {
-          if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
-        }, 1400);
+          tryDecodeBurst(attemptsLeft - 1).then(resolve, reject);
+        }, CAPTURE_RETRY_MS);
       });
+    });
+  }
+
+  function attemptCapture() {
+    if (cameraUnavailable) { fileInput.click(); return; }
+    if (!videoActive) { scanStatus.textContent = 'Camera still starting…'; return; }
+
+    capturedPhotoDataUrl = null;
+    scanStatus.textContent = 'Hold steady…';
+    setTimeout(function () {
+      scanStatus.textContent = 'Reading…';
+      tryDecodeBurst(CAPTURE_ATTEMPTS)
+        .then(function (barcode) { onBarcodeReady(barcode); })
+        .catch(function () {
+          scanStatus.textContent = 'No barcode found — try again';
+          setTimeout(function () {
+            if (currentView === 'scan') scanStatus.textContent = 'Point at a barcode, click PTT';
+          }, 1400);
+        });
+    }, CAPTURE_SETTLE_MS);
   }
 
   function decodeFromCanvas(canvas) {
