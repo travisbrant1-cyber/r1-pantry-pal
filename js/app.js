@@ -16,10 +16,11 @@
   var manualView = document.getElementById('manualView');
   var browseView = document.getElementById('browseView');
   var detailView = document.getElementById('detailView');
+  var diagView = document.getElementById('diagView');
   var VIEWS = {
     home: homeView, scan: scanView, lookup: lookupView, itemCard: itemCardView,
     recovery: recoveryView, status: statusView, manual: manualView,
-    browse: browseView, detail: detailView
+    browse: browseView, detail: detailView, diag: diagView
   };
 
   var camPreview = document.getElementById('camPreview');
@@ -55,10 +56,12 @@
   var detailRows = document.getElementById('detailRows');
   var detailDeleteBtn = document.getElementById('detailDeleteBtn');
 
+  var diagRows = document.getElementById('diagRows');
+
   // ---- State ----
   var currentView = 'home';
   var homeIndex = 0;
-  var HOME_ACTIONS = ['scan', 'browse', 'manual'];
+  var HOME_ACTIONS = ['scan', 'browse', 'manual', 'diag'];
 
   var inventory = [];
   var videoActive = false;
@@ -160,12 +163,119 @@
     if (action === 'scan') enterScan();
     else if (action === 'browse') enterBrowse();
     else if (action === 'manual') enterManualFromHome();
+    else if (action === 'diag') enterDiag();
   }
 
   function enterManualFromHome() {
     pendingItem = { id: 'manual-' + Date.now(), barcode: null, productName: '', brand: '', quantity: 1, location: 'Pantry', image: null, source: 'manual' };
     manualHeading.textContent = 'Manual entry';
     enterManual(false);
+  }
+
+  // ---- Diagnostics ----
+  // Isolates whether plain Web Workers and WebAssembly actually work on this
+  // device at all, independent of Tesseract's ~8MB payload - added after OCR
+  // fallback hung indefinitely on real hardware (never resolved or rejected)
+  // to find out which specific primitive (Worker spawn, WASM instantiate,
+  // or WASM *inside* a Worker - which is what Tesseract does) is the culprit.
+  var DIAG_TEST_TIMEOUT_MS = 6000;
+  var EMPTY_WASM_MODULE = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+  var diagLines = [];
+
+  function renderDiag() {
+    diagRows.textContent = diagLines.join('\n');
+  }
+
+  function setDiagLine(index, text) {
+    diagLines[index] = text;
+    renderDiag();
+  }
+
+  function diagWithTimeout(promise, ms) {
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error('timed out after ' + Math.round(ms / 1000) + 's'));
+      }, ms);
+      promise.then(function (v) {
+        if (settled) return;
+        settled = true; clearTimeout(timer); resolve(v);
+      }, function (err) {
+        if (settled) return;
+        settled = true; clearTimeout(timer); reject(err);
+      });
+    });
+  }
+
+  function testWorkerBasic() {
+    return new Promise(function (resolve, reject) {
+      var src = 'onmessage = function (e) { postMessage(e.data + 1); };';
+      var blobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+      var w = new Worker(blobUrl);
+      w.onmessage = function (e) {
+        w.terminate();
+        URL.revokeObjectURL(blobUrl);
+        if (e.data === 43) resolve('ok'); else reject(new Error('unexpected reply: ' + e.data));
+      };
+      w.onerror = function (e) {
+        w.terminate();
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error(e.message || 'worker error'));
+      };
+      w.postMessage(42);
+    });
+  }
+
+  function testWasmBasic() {
+    if (!window.WebAssembly) return Promise.reject(new Error('WebAssembly unsupported'));
+    return WebAssembly.instantiate(EMPTY_WASM_MODULE).then(function () { return 'ok'; });
+  }
+
+  function testWasmInWorker() {
+    return new Promise(function (resolve, reject) {
+      if (!window.Worker) { reject(new Error('Worker unsupported')); return; }
+      var src = [
+        'onmessage = function () {',
+        '  if (!self.WebAssembly) { postMessage({ ok: false, error: "no WebAssembly in worker" }); return; }',
+        '  WebAssembly.instantiate(new Uint8Array([0,97,115,109,1,0,0,0]))',
+        '    .then(function () { postMessage({ ok: true }); })',
+        '    .catch(function (err) { postMessage({ ok: false, error: String(err) }); });',
+        '};'
+      ].join('\n');
+      var blobUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+      var w = new Worker(blobUrl);
+      w.onmessage = function (e) {
+        w.terminate();
+        URL.revokeObjectURL(blobUrl);
+        if (e.data && e.data.ok) resolve('ok'); else reject(new Error((e.data && e.data.error) || 'unknown failure'));
+      };
+      w.onerror = function (e) {
+        w.terminate();
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error(e.message || 'worker error'));
+      };
+      w.postMessage('go');
+    });
+  }
+
+  function runDiagTest(index, label, fn) {
+    setDiagLine(index, label + ': running…');
+    return diagWithTimeout(fn(), DIAG_TEST_TIMEOUT_MS).then(function () {
+      setDiagLine(index, label + ': ok');
+    }, function (err) {
+      setDiagLine(index, label + ': FAIL - ' + ((err && err.message) || err));
+    });
+  }
+
+  function enterDiag() {
+    showView('diag');
+    diagLines = [];
+    renderDiag();
+    runDiagTest(0, 'Worker (basic)', testWorkerBasic)
+      .then(function () { return runDiagTest(1, 'WebAssembly (main thread)', testWasmBasic); })
+      .then(function () { return runDiagTest(2, 'WebAssembly (inside Worker)', testWasmInWorker); });
   }
 
   // ---- Camera / scanning ----
@@ -890,6 +1000,7 @@
     else if (currentView === 'status') { cancelVoiceIfActive(); clearTimeout(visionTimeoutHandle); showView('recovery'); }
     else if (currentView === 'browse') { showView('home'); }
     else if (currentView === 'detail') { showView('browse'); }
+    else if (currentView === 'diag') { showView('home'); }
   });
 
   // ---- Init ----

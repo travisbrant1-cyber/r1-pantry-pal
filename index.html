@@ -21,6 +21,7 @@
                     <button class="menu-item selected" data-action="scan">Scan item</button>
                     <button class="menu-item" data-action="browse">Browse inventory</button>
                     <button class="menu-item" data-action="manual">Add manually</button>
+                    <button class="menu-item" data-action="diag">Diagnostics</button>
                 </div>
                 <div class="hint">Scroll: choose &middot; Click PTT: select</div>
             </div>
@@ -106,6 +107,14 @@
                 <div class="detail-rows" id="detailRows"></div>
                 <button class="btn-secondary" id="detailDeleteBtn">Remove item</button>
                 <div class="hint">Scroll: qty &middot; Tap qty row: fractions &middot; Hold: back</div>
+            </div>
+
+            <!-- Diagnostics: isolates whether Workers / WASM / WASM-in-Worker
+                 actually work on this device, independent of Tesseract -->
+            <div class="view" id="diagView">
+                <div class="item-heading">Diagnostics</div>
+                <div class="diag-rows" id="diagRows"></div>
+                <div class="hint">Hold: back</div>
             </div>
         </main>
     </div>

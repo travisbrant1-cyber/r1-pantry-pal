@@ -348,5 +348,19 @@ button {
     justify-content: space-between;
 }
 
+/* Diagnostics view */
+.diag-rows {
+    flex: 1;
+    background: #1a2318;
+    border: 1px solid #2e3d2b;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 10px;
+    line-height: 1.4;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .detail-row .dr-label { color: #8a9686; }
 .detail-row .dr-value { font-weight: bold; }
