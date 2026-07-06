@@ -1079,6 +1079,28 @@
     recoveryDebug.textContent = 'Barcode read: ' + barcode + ' — not in product database';
   }
 
+  // makeThumbnail() fits into a fixed 160x120 (4:3) box, but this element's
+  // real CSS box is nothing like 4:3 - it's the full card width and only
+  // 32px tall (~7:1). Feeding a 4:3 thumbnail to a 7:1 box meant the CSS
+  // background-size:cover was doing a *second*, uncontrolled crop on top of
+  // an already-fitted image, compounding into exactly the confusing result
+  // a user screenshot flagged. This does one direct "cover" fit straight
+  // into the element's own live measured box size instead, so there's only
+  // ever one crop, matching what's actually about to be displayed.
+  function makeCoverFitThumbnail(source, boxW, boxH) {
+    var t = document.createElement('canvas');
+    t.width = Math.max(1, Math.round(boxW));
+    t.height = Math.max(1, Math.round(boxH));
+    var ctx = t.getContext('2d');
+    ctx.fillStyle = '#150f0d';
+    ctx.fillRect(0, 0, t.width, t.height);
+    var scale = Math.max(t.width / source.width, t.height / source.height);
+    var dw = source.width * scale, dh = source.height * scale;
+    var dx = (t.width - dw) / 2, dy = (t.height - dh) / 2;
+    ctx.drawImage(source, dx, dy, dw, dh);
+    return t.toDataURL('image/jpeg', 0.7);
+  }
+
   // Shows what OCR actually analyzed (post-crop, post-preprocess) when
   // available, rather than the full uncropped photo - a user screenshot
   // showed this preview was previously both distorted (see makeThumbnail)
@@ -1086,7 +1108,7 @@
   // working from), making failures impossible to visually diagnose.
   function renderRecoveryPhoto() {
     var debugImg = lastOcrAnalyzedCanvas
-      ? makeThumbnail(lastOcrAnalyzedCanvas, lastOcrAnalyzedCanvas.width, lastOcrAnalyzedCanvas.height)
+      ? makeCoverFitThumbnail(lastOcrAnalyzedCanvas, recoveryPhoto.offsetWidth || 220, recoveryPhoto.offsetHeight || 32)
       : null;
     var img = debugImg || capturedPhotoDataUrl;
     recoveryPhoto.style.backgroundImage = img ? 'url(' + img + ')' : 'none';
