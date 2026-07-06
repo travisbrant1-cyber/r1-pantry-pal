@@ -295,6 +295,8 @@ main {
 .qty-stepper {
     flex: 1;
     text-align: center;
+    padding: 8px 0;
+    cursor: pointer;
 }
 
 .qty-value {

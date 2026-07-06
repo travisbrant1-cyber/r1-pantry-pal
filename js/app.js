@@ -1263,7 +1263,7 @@
     manualQtyNum = 1;
     renderManualQty();
   }
-  manualQtyValue.addEventListener('click', toggleManualQtyFraction);
+  document.getElementById('manualQtyStepper').addEventListener('click', toggleManualQtyFraction);
   document.getElementById('manualQtyMinus').addEventListener('click', function () { adjustManualQty(-1); });
   document.getElementById('manualQtyPlus').addEventListener('click', function () { adjustManualQty(1); });
 
@@ -1355,7 +1355,7 @@
     itemQtyNum = 1;
     renderItemQty();
   }
-  qtyValue.addEventListener('click', toggleItemQtyFraction);
+  document.getElementById('qtyStepper').addEventListener('click', toggleItemQtyFraction);
   document.getElementById('itemQtyMinus').addEventListener('click', function () { adjustItemQty(-1); });
   document.getElementById('itemQtyPlus').addEventListener('click', function () { adjustItemQty(1); });
 
