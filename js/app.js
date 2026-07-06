@@ -61,6 +61,7 @@
 
   var detailName = document.getElementById('detailName');
   var detailRows = document.getElementById('detailRows');
+  var statFooter = document.getElementById('statFooter');
   var detailDeleteBtn = document.getElementById('detailDeleteBtn');
 
   var diagRows = document.getElementById('diagRows');
@@ -1111,7 +1112,7 @@
       ? makeCoverFitThumbnail(lastOcrAnalyzedCanvas, recoveryPhoto.offsetWidth || 220, recoveryPhoto.offsetHeight || 32)
       : null;
     var img = debugImg || capturedPhotoDataUrl;
-    recoveryPhoto.style.backgroundImage = img ? 'url(' + img + ')' : 'none';
+    recoveryPhoto.style.backgroundImage = img ? 'url(' + img + ')' : '';
   }
 
   // ---- Recovery menu ----
@@ -1323,7 +1324,7 @@
     itemName.textContent = pendingItem.productName || '(unnamed)';
     itemBrand.textContent = pendingItem.brand || '';
     itemLocation.textContent = pendingItem.location || 'Pantry';
-    itemPhoto.style.backgroundImage = pendingItem.image ? 'url(' + pendingItem.image + ')' : 'none';
+    itemPhoto.style.backgroundImage = pendingItem.image ? 'url(' + pendingItem.image + ')' : '';
     itemQtyNum = pendingItem.quantity != null ? pendingItem.quantity : (itemCardMode === 'existing' ? itemCardOriginalQty : 1);
     itemQtyFraction = itemQtyNum > 0 && itemQtyNum < 1;
     renderItemQty();
@@ -1430,19 +1431,31 @@
   function renderDetail(item) {
     detailName.textContent = item.productName || '(unnamed)';
     detailRows.innerHTML =
-      '<div class="detail-row" id="detailQtyRow"><span class="dr-label">Quantity</span>' +
-      '<span><button class="qty-btn" id="detailQtyMinus" aria-label="Decrease quantity">&minus;</button> ' +
-      '<span class="dr-value">' + formatQty(detailQty, detailQtyFraction) + '</span> ' +
-      '<button class="qty-btn" id="detailQtyPlus" aria-label="Increase quantity">+</button></span></div>' +
-      row('Location', item.location || 'Pantry') +
       row('Brand', item.brand || '—') +
       row('Barcode', item.barcode || '—') +
-      row('Source', item.source || '—') +
-      row('Updated', item.lastUpdated || '—');
+      row('Source', item.source || '—');
+    statFooter.innerHTML =
+      '<div class="stat-tile" id="detailQtyTile">' +
+      '<span class="stat-icon">#</span>' +
+      '<div class="stat-qty-row">' +
+      '<button class="qty-btn" id="detailQtyMinus" aria-label="Decrease quantity">&minus;</button>' +
+      '<span class="stat-value">' + formatQty(detailQty, detailQtyFraction) + '</span>' +
+      '<button class="qty-btn" id="detailQtyPlus" aria-label="Increase quantity">+</button>' +
+      '</div>' +
+      '<span class="stat-label">Qty</span>' +
+      '</div>' +
+      statTile('⌂', item.location || 'Pantry', 'Location') +
+      statTile('↻', item.lastUpdated || '—', 'Updated');
   }
 
   function row(label, value) {
     return '<div class="detail-row"><span class="dr-label">' + label + '</span><span class="dr-value">' + value + '</span></div>';
+  }
+
+  function statTile(icon, value, label) {
+    return '<div class="stat-tile"><span class="stat-icon">' + icon + '</span>' +
+      '<span class="stat-value">' + value + '</span>' +
+      '<span class="stat-label">' + label + '</span></div>';
   }
 
   function adjustDetailQty(delta) {
@@ -1465,10 +1478,10 @@
     saveInventoryToDisk();
     renderDetail(item);
   }
-  detailRows.addEventListener('click', function (e) {
+  statFooter.addEventListener('click', function (e) {
     if (e.target.closest('#detailQtyMinus')) { adjustDetailQty(-1); return; }
     if (e.target.closest('#detailQtyPlus')) { adjustDetailQty(1); return; }
-    if (e.target.closest('#detailQtyRow')) toggleDetailQtyFraction();
+    if (e.target.closest('#detailQtyTile')) toggleDetailQtyFraction();
   });
 
   detailDeleteBtn.addEventListener('click', function () {

@@ -13,8 +13,9 @@
     --danger: #d98a7a;
     --danger-bg: #2a1a17;
     --danger-line: #4a2a24;
-    --radius: 10px;
-    --radius-sm: 6px;
+    --radius: 14px;
+    --radius-sm: 9px;
+    --shadow-card: 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -139,17 +140,19 @@ main {
     color: var(--ink);
     border: 1px solid var(--line-soft);
     border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     text-align: left;
-    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 .menu-item.selected {
     border-color: var(--accent);
     background: linear-gradient(180deg, rgba(143, 174, 114, 0.16), rgba(143, 174, 114, 0.06));
     color: var(--accent);
+    box-shadow: var(--shadow-card), 0 0 0 1px rgba(143, 174, 114, 0.25);
 }
 
 .menu-item:active {
@@ -254,11 +257,13 @@ main {
 
 .item-photo {
     height: 32px;
-    background: var(--bg-sunken);
+    background:
+        radial-gradient(circle at 25% 20%, rgba(143, 174, 114, 0.22), transparent 65%),
+        var(--bg-sunken);
     border: 1px solid var(--line-soft);
-    border-radius: var(--radius-sm);
-    background-size: cover;
-    background-position: center;
+    border-radius: var(--radius);
+    background-size: cover, cover;
+    background-position: center, center;
     flex-shrink: 0;
 }
 
@@ -327,6 +332,7 @@ main {
     color: var(--accent);
     border: 1px solid var(--line-soft);
     border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-card);
     font-size: 15px;
     line-height: 1;
     display: flex;
@@ -351,6 +357,7 @@ button:active {
 .btn-primary {
     background: var(--accent);
     color: var(--accent-ink);
+    box-shadow: var(--shadow-card);
     flex-shrink: 0;
 }
 
@@ -358,6 +365,7 @@ button:active {
     background: var(--danger-bg);
     color: var(--danger);
     border: 1px solid var(--danger-line);
+    box-shadow: var(--shadow-card);
     flex-shrink: 0;
 }
 
@@ -409,6 +417,7 @@ button:active {
     background: var(--accent);
     color: var(--accent-ink);
     border-color: var(--accent);
+    box-shadow: var(--shadow-card);
 }
 
 .hint {
@@ -502,6 +511,63 @@ button:active {
 
 .detail-row .dr-label { color: var(--ink-dim); }
 .detail-row .dr-value { font-weight: 700; }
+
+/* Icon+label stat strip - a curved accent band with three quick-glance
+   tiles, sitting below the plain text rows. */
+.stat-footer {
+    display: flex;
+    background: var(--accent);
+    border-radius: var(--radius) var(--radius) 6px 6px;
+    box-shadow: var(--shadow-card);
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.stat-tile {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 5px 4px;
+    color: var(--accent-ink);
+    cursor: pointer;
+}
+
+.stat-tile + .stat-tile {
+    border-left: 1px solid rgba(22, 33, 15, 0.18);
+}
+
+.stat-icon {
+    font-size: 13px;
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    opacity: 0.75;
+}
+
+.stat-value {
+    font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.stat-qty-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stat-qty-row .qty-btn {
+    width: 16px;
+    height: 16px;
+    font-size: 11px;
+}
 
 /* Saved toast */
 .toast {
