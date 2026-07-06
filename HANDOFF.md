@@ -105,6 +105,12 @@ Prompted by a reference mockup the user liked (a plant-shop app: deep green curv
 - **Icon+label stat footer (detail view only)**: `renderDetail()` now builds a curved green `#statFooter` strip (`.stat-tile` × 3: Qty `#`, Location `⌂`, Updated `↻`) below the existing plain-text rows (Brand/Barcode/Source stay as-is, they're not "at a glance" stats). The quantity tile keeps the same `adjustDetailQty()`/`toggleDetailQtyFraction()` logic as before, just re-skinned; per the tap-target lesson above, the *whole tile* is the click target for the fraction toggle (`#detailQtyTile`), not a bare text span. Verified `scrollHeight === clientHeight` on the detail view after adding this (it's a tall page — Brand/Barcode/Source rows plus a 3-tile footer plus the delete button — so this was checked, not assumed).
 - Chose not to touch the item-card / manual-entry qty rows structurally in this pass, since their tap target was just fixed and unnecessary re-work risks reintroducing that bug.
 
+## Cache-busting on `css/styles.css` and `js/app.js` — bump on every push
+
+GitHub Pages serves both with `Cache-Control: max-age=600`. A user hitting plain "refresh" on iPhone Safari (not a full tab close/reopen) within that window — or in practice, sometimes past it too, real-world Safari caching runs looser than the header alone implies — got a fully-server-confirmed-fresh deploy but a stale rendered page, purely from the browser reusing its local cache. The server side was never wrong (confirmed via `curl -I` showing a `Last-Modified` matching the actual push time); this is a client-cache symptom, not a deploy symptom — don't waste time re-verifying the deploy pipeline when you see this report, jump straight to cache-busting.
+
+Fixed by giving both `<link>`/`<script>` tags in `index.html` a `?v=YYYYMMDDx` query string. **This must be bumped on every future push that touches `css/styles.css` or `js/app.js`, or the fix is a no-op** — an unchanged query string is still a cache hit. There's no build step auto-generating this; it's a manual string, currently `20260706a`. Increment the trailing letter (or roll to a new date) each time either file changes.
+
 ## Known bugs already found and fixed (for context, don't re-introduce)
 
 - **Camera-ready race condition** (fixed in `cb6f4f9`, then made moot by the tap-to-capture rewrite): starting an async operation's continuation only from the triggering navigation event, not from whichever happens later (navigation vs. the async operation itself completing).
