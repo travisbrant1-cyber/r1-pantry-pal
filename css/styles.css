@@ -74,8 +74,8 @@ header {
 
 header h1 {
     font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
-    font-size: 15px;
-    font-weight: 600;
+    font-size: 17px;
+    font-weight: 700;
     letter-spacing: 0.2px;
     color: var(--ink);
 }
@@ -102,7 +102,7 @@ main {
     flex-direction: column;
     height: 100%;
     padding: 8px;
-    gap: 6px;
+    gap: 5px;
     overflow-y: auto;
 }
 
@@ -141,7 +141,7 @@ main {
     border: 1px solid var(--line-soft);
     border-radius: var(--radius);
     box-shadow: var(--shadow-card);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     text-align: left;
@@ -269,9 +269,14 @@ main {
 
 .item-name {
     font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.15;
     flex-shrink: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
 }
 
 .item-brand {
@@ -279,6 +284,9 @@ main {
     color: var(--ink-dim);
     flex-shrink: 0;
     margin-top: -4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .qty-row {
@@ -288,7 +296,7 @@ main {
     background: var(--bg-raised);
     border: 1px solid var(--line-soft);
     border-radius: var(--radius-sm);
-    padding: 8px 10px;
+    padding: 6px 10px;
     flex-shrink: 0;
 }
 
@@ -306,8 +314,8 @@ main {
 
 .qty-value {
     font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
-    font-size: 21px;
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 700;
     color: var(--accent);
     transition: transform 0.12s ease;
     display: inline-block;
@@ -483,11 +491,11 @@ button:active {
     background: var(--bg-raised);
     border: 1px solid var(--line-soft);
     border-radius: var(--radius-sm);
-    padding: 9px;
+    padding: 8px;
     font-size: 11px;
     display: flex;
     flex-direction: column;
-    gap: 7px;
+    gap: 5px;
 }
 
 .detail-row {
@@ -509,8 +517,8 @@ button:active {
     word-break: break-word;
 }
 
-.detail-row .dr-label { color: var(--ink-dim); }
-.detail-row .dr-value { font-weight: 700; }
+.detail-row .dr-label { color: var(--ink-dim); font-size: 10px; }
+.detail-row .dr-value { font-weight: 700; font-size: 12px; }
 
 /* Icon+label stat strip - a curved accent band with three quick-glance
    tiles, sitting below the plain text rows. */
@@ -539,7 +547,7 @@ button:active {
 }
 
 .stat-icon {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1;
 }
 
@@ -548,13 +556,13 @@ button:active {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    opacity: 0.75;
+    opacity: 0.82;
 }
 
 .stat-value {
     font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 800;
 }
 
 .stat-qty-row {
