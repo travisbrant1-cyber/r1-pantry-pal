@@ -684,6 +684,35 @@
     return ((10 - (sum % 10)) % 10) === check;
   }
 
+  // A checksum-valid read can still be wrong: OCR occasionally drops the
+  // true final check digit of a longer code, leaving a shorter string that
+  // *independently* passes its own checksum at that shorter length by
+  // coincidence (observed on real hardware: a 13-digit EAN-13 read as its
+  // own first 12 digits, which happened to also be a "valid" UPC-A on its
+  // own). Unlike the guard-bar extra-digit case, there's no length-based
+  // tell here - the truncated read looks completely normal. This computes
+  // the *one* mathematically correct check digit for treating a
+  // one-short-of-valid string as the first N-1 digits of the next GTIN
+  // length up - not a 1-in-10 guess, since a GTIN's check digit is a
+  // deterministic function of the digits before it. Only ever tried as a
+  // secondary lookup after the original code's lookup has already failed
+  // (see lookupProduct) - never overrides a code that already resolved.
+  function computeGTINCheckDigit(digitsStr) {
+    var digits = digitsStr.split('').map(function (c) { return c.charCodeAt(0) - 48; });
+    var sum = 0;
+    for (var i = 0; i < digits.length; i++) {
+      var weight = ((digits.length - 1 - i) % 2 === 0) ? 3 : 1;
+      sum += digits[i] * weight;
+    }
+    return (10 - (sum % 10)) % 10;
+  }
+
+  function extendedGTINCandidate(str) {
+    if (!/^\d+$/.test(str)) return null;
+    if ([7, 11, 12].indexOf(str.length) === -1) return null;
+    return str + computeGTINCheckDigit(str);
+  }
+
   // A barcode's tall guard bars (start/end/middle) look visually similar to
   // the numeral "1" with a digit-only whitelist, so OCR can insert one
   // stray extra "1" at either edge of an otherwise-correct read. If the
@@ -1000,30 +1029,47 @@
   }
 
   // ---- Open Food Facts lookup ----
-  function lookupProduct(barcode) {
-    fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(barcode) + '.json')
+  function fetchProduct(barcode) {
+    return fetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(barcode) + '.json')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data && data.status === 1 && data.product && (data.product.product_name || data.product.generic_name)) {
-          pendingItem = {
-            id: barcode,
-            barcode: barcode,
-            productName: data.product.product_name || data.product.generic_name,
-            brand: data.product.brands || '',
-            quantity: 1,
-            location: 'Pantry',
-            image: data.product.image_front_small_url || data.product.image_url || capturedPhotoDataUrl,
-            source: 'OpenFoodFacts'
-          };
-          itemCardMode = 'new';
-          openItemCard();
-        } else {
-          enterRecovery(barcode);
-        }
+        if (data && data.status === 1 && data.product && (data.product.product_name || data.product.generic_name)) return data;
+        return null;
       })
-      .catch(function () {
-        enterRecovery(barcode);
+      .catch(function () { return null; });
+  }
+
+  function useProductMatch(barcode, data, source) {
+    pendingItem = {
+      id: barcode,
+      barcode: barcode,
+      productName: data.product.product_name || data.product.generic_name,
+      brand: data.product.brands || '',
+      quantity: 1,
+      location: 'Pantry',
+      image: data.product.image_front_small_url || data.product.image_url || capturedPhotoDataUrl,
+      source: source
+    };
+    itemCardMode = 'new';
+    openItemCard();
+  }
+
+  function lookupProduct(barcode) {
+    fetchProduct(barcode).then(function (data) {
+      if (data) { useProductMatch(barcode, data, 'OpenFoodFacts'); return; }
+
+      // The scanned code itself wasn't found - only now (never for a code
+      // that already resolved) also try the one deterministic "missing
+      // trailing check digit" correction, and only accept it if THAT code
+      // turns out to be a real registered product too. Tagged as a
+      // distinct source rather than silently presented as a clean scan.
+      var extended = extendedGTINCandidate(barcode);
+      if (!extended) { enterRecovery(barcode); return; }
+      fetchProduct(extended).then(function (data2) {
+        if (data2) useProductMatch(extended, data2, 'OpenFoodFacts-corrected');
+        else enterRecovery(barcode);
       });
+    });
   }
 
   function enterRecovery(barcode) {
